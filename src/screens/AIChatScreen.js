@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -7,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform
@@ -15,117 +13,105 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LLMService from '../services/LLMService';
 
+// ─── Theme ────────────────────────────────────────────────────────────────────
+const C = {
+  void:     '#050508',
+  surface:  '#0f0f1c',
+  card:     '#131320',
+  border:   'rgba(255,255,255,0.05)',
+  borderHi: 'rgba(59,130,246,0.22)',
+  blue:     '#3b82f6',
+  blue2:    '#60a5fa',
+  blueDark: '#1e3a8a',
+  blueDim:  'rgba(59,130,246,0.1)',
+  green:    '#22c55e',
+  textPri:  '#e0eaff',
+  textSec:  '#5a6a9a',
+  textDim:  '#2a2a45',
+};
+
+const QUICK_ACTIONS = [
+  { label: 'Form Tips',    text: 'How can I improve my form for squats?' },
+  { label: 'Nutrition',   text: 'What should I eat after a workout?' },
+  { label: 'Recovery',    text: 'How long should I rest between sets?' },
+  { label: 'Hypertrophy', text: 'How many sets per week for muscle growth?' },
+];
+
 const AIChatScreen = ({ navigate }) => {
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages]   = useState([]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const scrollViewRef = useRef();
 
   useEffect(() => {
-    addWelcomeMessage();
-  }, []);
-
-  const addWelcomeMessage = () => {
-    const welcomeMessage = {
+    setMessages([{
       id: 'welcome',
       type: 'ai',
-      text: `Hi! I'm your AI fitness assistant. I can help you with:
+      text: "Hello. Ask me anything about training, nutrition, or recovery.",
+      timestamp: new Date().toISOString(),
+    }]);
+  }, []);
 
-• Workout advice and form tips
-• Nutrition and diet questions  
-• Exercise modifications for injuries
-• Training program suggestions
-• Motivation and goal setting
-
-What would you like to know?`,
-      timestamp: new Date().toISOString()
-    };
-    setMessages([welcomeMessage]);
+  const scrollToBottom = () => {
+    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
   };
 
   const sendMessage = async () => {
     if (!inputText.trim()) return;
-    
-    const userMessage = {
+
+    const userMsg = {
       id: Date.now().toString(),
       type: 'user',
       text: inputText.trim(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages(prev => [...prev, userMsg]);
     setInputText('');
     setIsLoading(true);
-
-    // Scroll to bottom
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    scrollToBottom();
 
     try {
-      const response = await LLMService.askFitnessQuestion(userMessage.text);
-      
-      const aiMessage = {
+      const response = await LLMService.askFitnessQuestion(userMsg.text);
+      const aiMsg = {
         id: (Date.now() + 1).toString(),
         type: 'ai',
         text: response.success ? response.answer : response.fallback,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
-
-      setMessages(prev => [...prev, aiMessage]);
-      
-      // Save to history
-      if (response.success) {
-        await LLMService.saveChatHistory(userMessage.text, aiMessage.text);
-      }
-
-    } catch (error) {
-      const errorMessage = {
+      setMessages(prev => [...prev, aiMsg]);
+      if (response.success) await LLMService.saveChatHistory(userMsg.text, aiMsg.text);
+    } catch (_) {
+      setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         type: 'ai',
-        text: "I'm sorry, I'm having trouble connecting right now. Please try again in a moment.",
-        timestamp: new Date().toISOString()
-      };
-      setMessages(prev => [...prev, errorMessage]);
+        text: "Connection issue. Please try again.",
+        timestamp: new Date().toISOString(),
+      }]);
     } finally {
       setIsLoading(false);
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      scrollToBottom();
     }
   };
 
   const renderMessage = (message) => {
     const isUser = message.type === 'user';
-    
     return (
       <View
         key={message.id}
-        style={[
-          styles.messageContainer,
-          isUser ? styles.userMessageContainer : styles.aiMessageContainer
-        ]}
+        style={[s.msgWrap, isUser ? s.msgWrapUser : s.msgWrapAI]}
       >
-        <View
-          style={[
-            styles.messageBubble,
-            isUser ? styles.userMessage : styles.aiMessage
-          ]}
-        >
-          <Text style={[
-            styles.messageText,
-            isUser ? styles.userMessageText : styles.aiMessageText
-          ]}>
+        {!isUser && (
+          <View style={s.aiAvatar}>
+            <Text style={s.aiAvatarText}>AI</Text>
+          </View>
+        )}
+        <View style={[s.bubble, isUser ? s.bubbleUser : s.bubbleAI]}>
+          <Text style={[s.bubbleText, isUser ? s.bubbleTextUser : s.bubbleTextAI]}>
             {message.text}
           </Text>
-          <Text style={[
-            styles.timestamp,
-            isUser ? styles.userTimestamp : styles.aiTimestamp
-          ]}>
-            {new Date(message.timestamp).toLocaleTimeString([], { 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            })}
+          <Text style={[s.time, isUser ? s.timeUser : s.timeAI]}>
+            {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </View>
       </View>
@@ -133,81 +119,82 @@ What would you like to know?`,
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView 
-        style={styles.container}
+    <SafeAreaView style={s.container}>
+      <KeyboardAvoidingView
+        style={s.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigate('workout')}
-          >
-            <Text style={styles.backButtonText}>← Back</Text>
+        <View style={s.header}>
+          <TouchableOpacity style={s.backBtn} onPress={() => navigate('workout')}>
+            <Text style={s.backBtnText}>← Back</Text>
           </TouchableOpacity>
-          
-          <Text style={styles.title}>AI Fitness Assistant</Text>
-          
+          <View style={s.headerCenter}>
+            <Text style={s.headerTitle}>AI FITNESS ASSISTANT</Text>
+            <Text style={s.headerSub}>Llama 3.3 70B</Text>
+          </View>
           <View style={{ width: 60 }} />
         </View>
 
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity
-            style={styles.quickActionButton}
-            onPress={() => setInputText('How can I improve my form for squats?')}
-            disabled={isLoading}
-          >
-            <Text style={styles.quickActionText}>Form Tips</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.quickActionButton}
-            onPress={() => setInputText('What should I eat after a workout?')}
-            disabled={isLoading}
-          >
-            <Text style={styles.quickActionText}>Nutrition</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Quick actions */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={s.quickRow}
+        >
+          {QUICK_ACTIONS.map(q => (
+            <TouchableOpacity
+              key={q.label}
+              style={s.quickBtn}
+              onPress={() => setInputText(q.text)}
+              disabled={isLoading}
+            >
+              <Text style={s.quickBtnText}>{q.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* Divider */}
+        <View style={s.divider} />
 
         {/* Messages */}
         <ScrollView
           ref={scrollViewRef}
-          style={styles.messagesContainer}
-          contentContainerStyle={styles.messagesContent}
+          style={s.messages}
+          contentContainerStyle={s.messagesContent}
           showsVerticalScrollIndicator={false}
         >
           {messages.map(renderMessage)}
-          
+
           {isLoading && (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color="#7C3AED" size="small" />
-              <Text style={styles.loadingText}>AI is thinking...</Text>
+            <View style={s.loadingRow}>
+              <View style={s.aiAvatar}>
+                <Text style={s.aiAvatarText}>AI</Text>
+              </View>
+              <View style={s.bubbleAI}>
+                <ActivityIndicator color={C.blue2} size="small" />
+              </View>
             </View>
           )}
         </ScrollView>
 
-        {/* Input */}
-        <View style={styles.inputContainer}>
+        {/* Input bar */}
+        <View style={s.inputBar}>
           <TextInput
-            style={styles.textInput}
+            style={s.input}
             value={inputText}
             onChangeText={setInputText}
-            placeholder="Ask me about fitness, nutrition, workouts..."
-            placeholderTextColor="#666"
+            placeholder="Ask anything..."
+            placeholderTextColor={C.textDim}
             multiline
             maxLength={500}
           />
           <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!inputText.trim() || isLoading) && styles.sendButtonDisabled
-            ]}
+            style={[s.sendBtn, (!inputText.trim() || isLoading) && s.sendBtnOff]}
             onPress={sendMessage}
             disabled={!inputText.trim() || isLoading}
           >
-            <Text style={styles.sendButtonText}>Send</Text>
+            <Text style={s.sendBtnText}>›</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -215,153 +202,225 @@ What would you like to know?`,
   );
 };
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F0F14',
+    backgroundColor: C.void,
   },
+
+  // Header
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#1F1F26',
+    borderBottomColor: C.border,
   },
-  backButton: {
-    padding: 8,
+  backBtn: {
+    backgroundColor: C.blueDim,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.2)',
+    width: 60,
   },
-  backButtonText: {
-    color: '#7C3AED',
-    fontSize: 16,
-    fontWeight: '600',
+  backBtnText: {
+    color: C.blue2,
+    fontSize: 13,
+    fontWeight: '700',
   },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: 'white',
-  },
-  quickActions: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    gap: 10,
-  },
-  quickActionButton: {
-    flex: 1,
-    backgroundColor: '#1F1F26',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+  headerCenter: {
     alignItems: 'center',
   },
-  quickActionText: {
-    color: '#7C3AED',
-    fontSize: 14,
-    fontWeight: '500',
+  headerTitle: {
+    fontFamily: 'BebasNeue-Regular',
+    fontSize: 18,
+    color: C.textPri,
+    letterSpacing: 2,
   },
-  messagesContainer: {
+  headerSub: {
+    fontSize: 10,
+    color: C.green,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginTop: 1,
+  },
+
+  // Quick actions
+  quickRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+    flexDirection: 'row',
+  },
+  quickBtn: {
+    backgroundColor: C.card,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: C.borderHi,
+  },
+  quickBtnText: {
+    color: C.blue2,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: C.border,
+    marginHorizontal: 0,
+  },
+
+  // Messages
+  messages: {
     flex: 1,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   messagesContent: {
-    paddingVertical: 10,
-  },
-  messageContainer: {
-    marginVertical: 5,
-  },
-  userMessageContainer: {
-    alignItems: 'flex-end',
-  },
-  aiMessageContainer: {
-    alignItems: 'flex-start',
-  },
-  messageBubble: {
-    maxWidth: '80%',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 20,
-  },
-  userMessage: {
-    backgroundColor: '#7C3AED',
-    borderBottomRightRadius: 5,
-  },
-  aiMessage: {
-    backgroundColor: '#1F1F26',
-    borderBottomLeftRadius: 5,
-  },
-  messageText: {
-    fontSize: 16,
-    lineHeight: 20,
-  },
-  userMessageText: {
-    color: 'white',
-  },
-  aiMessageText: {
-    color: 'white',
-  },
-  timestamp: {
-    fontSize: 12,
-    marginTop: 5,
-  },
-  userTimestamp: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    textAlign: 'right',
-  },
-  aiTimestamp: {
-    color: '#666',
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#1F1F26',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 20,
-    borderBottomLeftRadius: 5,
-    marginVertical: 5,
-  },
-  loadingText: {
-    color: '#666',
-    marginLeft: 10,
-    fontSize: 14,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    paddingBottom: 20,
-    alignItems: 'flex-end',
+    paddingVertical: 16,
     gap: 10,
   },
-  textInput: {
-    flex: 1,
-    backgroundColor: '#1F1F26',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    color: 'white',
-    fontSize: 16,
-    maxHeight: 100,
-    textAlignVertical: 'top',
+  msgWrap: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 4,
   },
-  sendButton: {
-    backgroundColor: '#7C3AED',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 20,
+  msgWrapUser: {
+    justifyContent: 'flex-end',
+  },
+  msgWrapAI: {
+    justifyContent: 'flex-start',
+  },
+
+  // AI avatar
+  aiAvatar: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: C.blueDark,
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.3)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 8,
+    flexShrink: 0,
   },
-  sendButtonDisabled: {
-    backgroundColor: '#333',
+  aiAvatarText: {
+    fontFamily: 'BebasNeue-Regular',
+    fontSize: 12,
+    color: C.blue2,
+    letterSpacing: 1,
   },
-  sendButtonText: {
-    color: 'white',
-    fontSize: 16,
+
+  // Bubbles
+  bubble: {
+    maxWidth: '78%',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+  },
+  bubbleUser: {
+    backgroundColor: C.blueDark,
+    borderRadius: 16,
+    borderBottomRightRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.25)',
+  },
+  bubbleAI: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 16,
+    borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  bubbleText: {
+    fontSize: 14,
+    lineHeight: 21,
+    fontWeight: '500',
+  },
+  bubbleTextUser: {
+    color: '#fff',
+  },
+  bubbleTextAI: {
+    color: C.textPri,
+  },
+  time: {
+    fontSize: 10,
+    marginTop: 5,
     fontWeight: '600',
+  },
+  timeUser: {
+    color: 'rgba(255,255,255,0.4)',
+    textAlign: 'right',
+  },
+  timeAI: {
+    color: C.textDim,
+  },
+
+  // Loading
+  loadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+
+  // Input bar
+  inputBar: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 16,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    backgroundColor: C.void,
+  },
+  input: {
+    flex: 1,
+    backgroundColor: C.card,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    color: C.textPri,
+    fontSize: 15,
+    maxHeight: 100,
+    textAlignVertical: 'top',
+    borderWidth: 1,
+    borderColor: C.border,
+    fontWeight: '500',
+  },
+  sendBtn: {
+    backgroundColor: C.blueDark,
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(59,130,246,0.3)',
+    shadowColor: C.blue,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  sendBtnOff: {
+    backgroundColor: C.card,
+    borderColor: C.border,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  sendBtnText: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '900',
+    lineHeight: 26,
   },
 });
 

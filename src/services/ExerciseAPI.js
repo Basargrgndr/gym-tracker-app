@@ -1,8 +1,8 @@
 // Enhanced ExerciseAPI.js with comprehensive video mapping
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main';
-const IMAGE_BASE_URL = `${API_BASE_URL}/exercises`;
+const API_BASE_URL = 'https://exercisedb.dev/api';
+const IMAGE_BASE_URL = 'https://exercisedb.dev';
 
 class ExerciseAPI {
   constructor() {
@@ -265,22 +265,21 @@ class ExerciseAPI {
   // Fetch all exercises from the combined JSON file
   async fetchAllExercises() {
     try {
-      console.log('Fetching exercises with video integration from API...');
-      const response = await fetch(`${API_BASE_URL}/dist/exercises.json`);
+      console.log('Fetching exercises from exercisedb.dev...');
+      
+      const response = await fetch(`${API_BASE_URL}/exercises?limit=800&offset=0`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
       
-      const exercises = await response.json();
+      const data = await response.json();
+      const exercises = data.exercises || data || [];
       
-      // Transform the data with video integration
-      const transformedExercises = exercises.map(this.transformExercise);
+      const transformedExercises = exercises.map(ex => this.transformExerciseDB(ex));
       
-      // Save to cache
       await this.saveToCache(transformedExercises);
-      
-      console.log(`Successfully fetched and cached ${transformedExercises.length} exercises with videos`);
+      console.log(`Successfully fetched and cached ${transformedExercises.length} exercises`);
       return transformedExercises;
     } catch (error) {
       console.error('Error fetching exercises:', error);
@@ -288,35 +287,110 @@ class ExerciseAPI {
     }
   }
 
+  // Transform exercisedb.dev format to our app format
+  transformExerciseDB = (exercise) => {
+    const name = exercise.name || '';
+
+    // Handle both old and new API field names
+    let primaryMuscles = [];
+    if (exercise.targetMuscles && exercise.targetMuscles.length > 0) {
+      primaryMuscles = exercise.targetMuscles;
+    } else if (exercise.target) {
+      primaryMuscles = [exercise.target];
+    }
+
+    const secondaryMuscles = exercise.secondaryMuscles || [];
+
+    // equipments is array in new API, equipment is string in old
+    let equipment = 'body only';
+    if (exercise.equipments && exercise.equipments.length > 0) {
+      equipment = exercise.equipments[0];
+    } else if (exercise.equipment) {
+      equipment = exercise.equipment;
+    }
+
+    const bodyPart = (exercise.bodyParts && exercise.bodyParts[0]) || exercise.bodyPart || '';
+
+    // Determine level from exercise name/type heuristic since API doesn't provide it
+    const level = this.inferLevel(name, equipment);
+
+    const transformed = {
+      id: exercise.exerciseId || exercise.id || `ex_${Math.random().toString(36).substr(2, 9)}`,
+      name: name,
+      category: this.mapBodyPartToCategory(bodyPart),
+      level: level,
+      mechanic: this.inferMechanic(bodyPart),
+      equipment: equipment.toLowerCase(),
+      force: 'push',
+      primaryMuscles: Array.isArray(primaryMuscles) ? primaryMuscles : [primaryMuscles],
+      secondaryMuscles: Array.isArray(secondaryMuscles) ? secondaryMuscles : [],
+      instructions: exercise.instructions || [],
+      images: exercise.imageUrl ? [`${IMAGE_BASE_URL}/${exercise.imageUrl}`] : [],
+    };
+
+    const videoInfo = this.getVideoForExercise(name, transformed.primaryMuscles);
+    if (videoInfo) transformed.video = videoInfo;
+
+    return transformed;
+  };
+
+  mapBodyPartToCategory(bodyPart) {
+    const cardioBodyParts = ['cardio', 'waist'];
+    if (!bodyPart) return 'strength';
+    return cardioBodyParts.includes(bodyPart.toLowerCase()) ? 'cardio' : 'strength';
+  }
+
+  inferLevel(name, equipment) {
+    const advancedKeywords = ['muscle up', 'handstand', 'pistol', 'planche', 'clean', 'snatch', 'jerk'];
+    const beginnerKeywords = ['push-up', 'push up', 'squat', 'lunge', 'plank', 'crunch', 'sit-up', 'jumping jack', 'walk'];
+    const nameLower = name.toLowerCase();
+
+    if (advancedKeywords.some(k => nameLower.includes(k))) return 'advanced';
+    if (beginnerKeywords.some(k => nameLower.includes(k))) return 'beginner';
+    if (equipment === 'body only' || equipment === 'none') return 'beginner';
+    return 'intermediate';
+  }
+
+  inferMechanic(bodyPart) {
+    const isolationParts = ['biceps', 'triceps', 'calves', 'forearms'];
+    if (!bodyPart) return 'compound';
+    return isolationParts.includes(bodyPart.toLowerCase()) ? 'isolation' : 'compound';
+  }
+
   // Main method to get exercises (cache-first approach)
   async getExercises() {
     try {
-      // Check if we have valid cached data
-      const isCacheValid = await this.isCacheValid();
-      
-      if (isCacheValid) {
-        const cachedExercises = await this.getFromCache();
-        if (cachedExercises && cachedExercises.length > 0) {
-          console.log(`Using cached exercises with videos: ${cachedExercises.length} exercises`);
-          return cachedExercises;
-        }
-      }
-      
-      // Cache is invalid or empty, fetch from API
-      return await this.fetchAllExercises();
-    } catch (error) {
-      console.error('Error in getExercises:', error);
-      
-      // If API fails, try to return cached data even if expired
+      // Always check cache first - fastest path
       const cachedExercises = await this.getFromCache();
       if (cachedExercises && cachedExercises.length > 0) {
-        console.log('API failed, using expired cache as fallback');
+        console.log(`Using cached exercises: ${cachedExercises.length} exercises`);
+        
+        // Refresh cache in background if expired (non-blocking)
+        this.isCacheValid().then(valid => {
+          if (!valid) {
+            console.log('Cache expired, refreshing in background...');
+            this.fetchAllExercises().catch(err => 
+              console.log('Background refresh failed:', err.message)
+            );
+          }
+        });
+        
         return cachedExercises;
       }
       
-      // If everything fails, return fallback exercises with videos
+      // No cache - fetch from API
+      return await this.fetchAllExercises();
+    } catch (error) {
+      console.error('Error in getExercises:', error);
       return this.getFallbackExercisesWithVideos();
     }
+  }
+
+  // Non-blocking background preload - call this on app start
+  preloadExercises() {
+    this.getExercises().catch(err => 
+      console.log('Preload failed:', err.message)
+    );
   }
 
   // Enhanced fallback exercises with video integration
@@ -567,5 +641,3 @@ class ExerciseAPI {
 
 // Export singleton instance
 export default new ExerciseAPI();
-
-

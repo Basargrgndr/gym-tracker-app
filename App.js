@@ -12,6 +12,7 @@ import GeneratedWorkoutScreen from './src/screens/GeneratedWorkoutScreen';
 import ProgramsScreen from './src/screens/ProgramsScreen';
 import AIChatScreen from './src/screens/AIChatScreen';
 import { styles } from './src/utils/styles';
+import ExerciseAPI from './src/services/ExerciseAPI';
 
 const App = () => {
   const [currentScreen, setCurrentScreen] = useState('loading');
@@ -29,6 +30,7 @@ const App = () => {
   }, []);
 
   const checkAuthStatus = async () => {
+    ExerciseAPI.preloadExercises(); // Preload exercises in background
     try {
       const userData = await AsyncStorage.getItem('user_data');
       const profileData = await AsyncStorage.getItem('user_profile');

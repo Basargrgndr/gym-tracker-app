@@ -1,4 +1,4 @@
-// Fixed ProgramsScreen.js with working Add Exercise functionality
+// ProgramsScreen.js - Complete Rewrite
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -10,812 +10,826 @@ import {
   TextInput,
   ActivityIndicator,
   FlatList,
+  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Import services with error handling
-let WorkoutService, ExerciseAPI;
-try {
-  WorkoutService = require('../services/WorkoutService').default;
-  ExerciseAPI = require('../services/ExerciseAPI').default;
-} catch (error) {
-  console.warn('Import error in ProgramsScreen:', error);
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+const T = {
+  bg:        '#050508',
+  surface:   '#0f0f1c',
+  card:      '#131320',
+  border:    'rgba(255,255,255,0.05)',
+  borderHi:  'rgba(59,130,246,0.22)',
+  accent:    '#3b82f6',
+  accentDim: 'rgba(59,130,246,0.1)',
+  accentDark:'#1e3a8a',
+  green:     '#22C55E',
+  red:       '#EF4444',
+  textPri:   '#e0eaff',
+  textSec:   '#5a6a9a',
+  textDim:   '#2a2a45',
+};
+
+const DAYS = [
+  { key: 'mon', label: 'Mon' },
+  { key: 'tue', label: 'Tue' },
+  { key: 'wed', label: 'Wed' },
+  { key: 'thu', label: 'Thu' },
+  { key: 'fri', label: 'Fri' },
+  { key: 'sat', label: 'Sat' },
+  { key: 'sun', label: 'Sun' },
+];
+
+const EMPTY_WEEKLY = () =>
+  DAYS.reduce((acc, d) => ({ ...acc, [d.key]: [] }), {});
+
+// ─── Fallback exercises ───────────────────────────────────────────────────────
+const FALLBACK = [
+  { id: 'f1',  name: 'Push-ups',          primaryMuscles: ['Chest'],      equipment: 'body only',   level: 'beginner',     category: 'strength' },
+  { id: 'f2',  name: 'Squats',            primaryMuscles: ['Legs'],       equipment: 'body only',   level: 'beginner',     category: 'strength' },
+  { id: 'f3',  name: 'Plank',             primaryMuscles: ['Core'],       equipment: 'body only',   level: 'beginner',     category: 'strength' },
+  { id: 'f4',  name: 'Lunges',            primaryMuscles: ['Legs'],       equipment: 'body only',   level: 'beginner',     category: 'strength' },
+  { id: 'f5',  name: 'Pull-ups',          primaryMuscles: ['Back'],       equipment: 'pull-up bar', level: 'intermediate', category: 'strength' },
+  { id: 'f6',  name: 'Dumbbell Row',      primaryMuscles: ['Back'],       equipment: 'dumbbell',    level: 'beginner',     category: 'strength' },
+  { id: 'f7',  name: 'Shoulder Press',    primaryMuscles: ['Shoulders'],  equipment: 'dumbbell',    level: 'intermediate', category: 'strength' },
+  { id: 'f8',  name: 'Bicep Curl',        primaryMuscles: ['Biceps'],     equipment: 'dumbbell',    level: 'beginner',     category: 'strength' },
+  { id: 'f9',  name: 'Tricep Dip',        primaryMuscles: ['Triceps'],    equipment: 'body only',   level: 'beginner',     category: 'strength' },
+  { id: 'f10', name: 'Deadlift',          primaryMuscles: ['Hamstrings'], equipment: 'barbell',     level: 'intermediate', category: 'strength' },
+  { id: 'f11', name: 'Bench Press',       primaryMuscles: ['Chest'],      equipment: 'barbell',     level: 'intermediate', category: 'strength' },
+  { id: 'f12', name: 'Jumping Jacks',     primaryMuscles: ['Full Body'],  equipment: 'body only',   level: 'beginner',     category: 'cardio'   },
+  { id: 'f13', name: 'Mountain Climbers', primaryMuscles: ['Core'],       equipment: 'body only',   level: 'intermediate', category: 'cardio'   },
+  { id: 'f14', name: 'Burpees',           primaryMuscles: ['Full Body'],  equipment: 'body only',   level: 'advanced',     category: 'cardio'   },
+  { id: 'f15', name: 'Russian Twist',     primaryMuscles: ['Core'],       equipment: 'body only',   level: 'beginner',     category: 'strength' },
+  { id: 'f16', name: 'Hip Thrust',        primaryMuscles: ['Glutes'],     equipment: 'body only',   level: 'beginner',     category: 'strength' },
+  { id: 'f17', name: 'Leg Press',         primaryMuscles: ['Legs'],       equipment: 'machine',     level: 'beginner',     category: 'strength' },
+  { id: 'f18', name: 'Lat Pulldown',      primaryMuscles: ['Back'],       equipment: 'cable',       level: 'beginner',     category: 'strength' },
+  { id: 'f19', name: 'Leg Curl',          primaryMuscles: ['Hamstrings'], equipment: 'machine',     level: 'beginner',     category: 'strength' },
+  { id: 'f20', name: 'Calf Raise',        primaryMuscles: ['Calves'],     equipment: 'body only',   level: 'beginner',     category: 'strength' },
+  { id: 'f21', name: 'Incline Press',     primaryMuscles: ['Chest'],      equipment: 'dumbbell',    level: 'intermediate', category: 'strength' },
+  { id: 'f22', name: 'Face Pull',         primaryMuscles: ['Shoulders'],  equipment: 'cable',       level: 'beginner',     category: 'strength' },
+  { id: 'f23', name: 'Romanian Deadlift', primaryMuscles: ['Hamstrings'], equipment: 'barbell',     level: 'intermediate', category: 'strength' },
+  { id: 'f24', name: 'Leg Extension',     primaryMuscles: ['Quadriceps'], equipment: 'machine',     level: 'beginner',     category: 'strength' },
+  { id: 'f25', name: 'Cable Fly',         primaryMuscles: ['Chest'],      equipment: 'cable',       level: 'intermediate', category: 'strength' },
+];
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+async function loadExercisesFromCache() {
+  try {
+    const cached = await AsyncStorage.getItem('exercise_database_cache');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed && parsed.length > 0) return parsed;
+    }
+  } catch (_) {}
+  return FALLBACK;
 }
 
-import { styles } from '../utils/styles';
+// ─── Shared styles ────────────────────────────────────────────────────────────
+const labelStyle = {
+  color: T.textSec,
+  fontSize: 13,
+  fontWeight: '600',
+  marginBottom: 6,
+};
+const inputStyle = {
+  backgroundColor: T.card,
+  borderRadius: 12,
+  paddingHorizontal: 14,
+  paddingVertical: 11,
+  color: T.textPri,
+  fontSize: 15,
+  borderWidth: 1,
+  borderColor: T.border,
+  marginBottom: 14,
+};
+const miniInputStyle = {
+  backgroundColor: T.surface,
+  borderRadius: 8,
+  paddingHorizontal: 4,
+  paddingVertical: 5,
+  color: T.textPri,
+  fontSize: 13,
+  textAlign: 'center',
+  borderWidth: 1,
+  borderColor: T.border,
+  marginHorizontal: 2,
+};
 
+// ─── Table Row ────────────────────────────────────────────────────────────────
+const TableHeader = () => (
+  <View style={{ flexDirection: 'row', paddingHorizontal: 4, marginBottom: 4 }}>
+    <Text style={{ flex: 3, color: T.textDim, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 }}>Exercise</Text>
+    <Text style={{ width: 44, color: T.textDim, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center' }}>Sets</Text>
+    <Text style={{ width: 52, color: T.textDim, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center' }}>Reps</Text>
+    <Text style={{ width: 44, color: T.textDim, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center' }}>kg</Text>
+  </View>
+);
+
+const TableRow = ({ ex, index, editable, onRemove, onChange }) => (
+  <View style={{
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 4,
+    backgroundColor: index % 2 === 0 ? 'transparent' : 'rgba(124,106,254,0.04)',
+    borderRadius: 6,
+  }}>
+    <Text style={{ flex: 3, color: T.textPri, fontSize: 13, fontWeight: '500', paddingRight: 6 }} numberOfLines={1}>
+      {ex.name}
+    </Text>
+    {editable ? (
+      <>
+        <TextInput
+          value={ex.sets}
+          onChangeText={v => onChange('sets', v)}
+          placeholder="—"
+          placeholderTextColor={T.textDim}
+          keyboardType="numeric"
+          style={[miniInputStyle, { width: 44 }]}
+        />
+        <TextInput
+          value={ex.reps}
+          onChangeText={v => onChange('reps', v)}
+          placeholder="—"
+          placeholderTextColor={T.textDim}
+          style={[miniInputStyle, { width: 52 }]}
+        />
+        <TextInput
+          value={ex.weight}
+          onChangeText={v => onChange('weight', v)}
+          placeholder="—"
+          placeholderTextColor={T.textDim}
+          keyboardType="numeric"
+          style={[miniInputStyle, { width: 44 }]}
+        />
+        <TouchableOpacity onPress={onRemove} style={{ width: 24, alignItems: 'center', marginLeft: 2 }}>
+          <Text style={{ color: T.red, fontSize: 18, lineHeight: 20 }}>×</Text>
+        </TouchableOpacity>
+      </>
+    ) : (
+      <>
+        <Text style={{ width: 44, color: T.textSec, fontSize: 13, textAlign: 'center' }}>{ex.sets || '—'}</Text>
+        <Text style={{ width: 52, color: T.textSec, fontSize: 13, textAlign: 'center' }}>{ex.reps || '—'}</Text>
+        <Text style={{ width: 44, color: T.textSec, fontSize: 13, textAlign: 'center' }}>{ex.weight ? `${ex.weight}` : '—'}</Text>
+      </>
+    )}
+  </View>
+);
+
+// ─── Daily Program Card ───────────────────────────────────────────────────────
+const DailyCard = ({ program, onStart, onDelete }) => (
+  <View style={{
+    backgroundColor: T.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: T.border,
+    marginBottom: 14,
+    overflow: 'hidden',
+  }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: T.border }}>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: T.textPri, fontSize: 18, fontFamily: 'BebasNeue-Regular', letterSpacing: 1 }}>{program.name}</Text>
+        {program.description ? (
+          <Text style={{ color: T.textSec, fontSize: 13, marginTop: 2 }}>{program.description}</Text>
+        ) : null}
+      </View>
+      <TouchableOpacity onPress={onDelete} style={{ padding: 6 }}>
+        <Text style={{ color: T.red, fontSize: 22, lineHeight: 24 }}>×</Text>
+      </TouchableOpacity>
+    </View>
+
+    <View style={{ padding: 14 }}>
+      {program.exercises.length === 0 ? (
+        <Text style={{ color: T.textDim, fontSize: 13, textAlign: 'center', paddingVertical: 8 }}>No exercises</Text>
+      ) : (
+        <>
+          <TableHeader />
+          {program.exercises.map((ex, i) => (
+            <TableRow key={i} ex={ex} index={i} editable={false} />
+          ))}
+        </>
+      )}
+    </View>
+
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingBottom: 14 }}>
+      <Text style={{ color: T.textDim, fontSize: 12 }}>
+        {program.exercises.length} exercises · {new Date(program.createdAt).toLocaleDateString()}
+      </Text>
+      <TouchableOpacity
+        onPress={onStart}
+        style={{ backgroundColor: T.accentDark, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 }}
+      >
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Start ›</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+);
+
+// ─── Weekly Program Card ──────────────────────────────────────────────────────
+const WeeklyCard = ({ program, onStart, onDelete }) => {
+  const [expandedDay, setExpandedDay] = useState(null);
+  const activeDays = DAYS.filter(d => (program.weeklySchedule[d.key] || []).length > 0);
+
+  return (
+    <View style={{
+      backgroundColor: T.card,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: T.border,
+      marginBottom: 14,
+      overflow: 'hidden',
+    }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: T.border }}>
+        <View style={{ flex: 1 }}>
+          {program.source === 'AI_WEEKLY' && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 5 }}>
+              <View style={{ backgroundColor: 'rgba(139,92,246,0.15)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: 'rgba(139,92,246,0.35)' }}>
+                <Text style={{ color: '#A78BFA', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>GENERATED BY AI</Text>
+              </View>
+            </View>
+          )}
+          <Text style={{ color: T.textPri, fontSize: 18, fontFamily: 'BebasNeue-Regular', letterSpacing: 1 }}>{program.name}</Text>
+          {program.description ? (
+            <Text style={{ color: T.textSec, fontSize: 13, marginTop: 2 }}>{program.description}</Text>
+          ) : null}
+        </View>
+        <TouchableOpacity onPress={onDelete} style={{ padding: 6 }}>
+          <Text style={{ color: T.red, fontSize: 22, lineHeight: 24 }}>×</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Day pills */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+        {DAYS.map(d => {
+          const count = (program.weeklySchedule[d.key] || []).length;
+          const isActive = count > 0;
+          const isExpanded = expandedDay === d.key;
+          return (
+            <TouchableOpacity
+              key={d.key}
+              onPress={() => setExpandedDay(isExpanded ? null : d.key)}
+              disabled={!isActive}
+              activeOpacity={0.7}
+              style={{
+                alignItems: 'center',
+                marginRight: 8,
+                backgroundColor: isExpanded ? T.accentDark : isActive ? 'rgba(59,130,246,0.12)' : T.surface,
+                borderRadius: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+                borderWidth: 1,
+                borderColor: isExpanded ? T.accent : isActive ? T.accent : T.border,
+                opacity: isActive ? 1 : 0.35,
+                minWidth: 52,
+              }}
+            >
+              <Text style={{ color: isExpanded ? '#fff' : isActive ? T.textPri : T.textDim, fontWeight: '700', fontSize: 13 }}>{d.label}</Text>
+              {isActive && (
+                <Text style={{ color: isExpanded ? 'rgba(255,255,255,0.65)' : T.accent, fontSize: 10, marginTop: 1 }}>{count} ex</Text>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Expanded day table */}
+      {expandedDay && (
+        <View style={{ marginHorizontal: 14, marginBottom: 12, backgroundColor: T.surface, borderRadius: 12, padding: 12, borderWidth: 1, borderColor: T.border }}>
+          <Text style={{ color: '#60a5fa', fontWeight: '700', fontSize: 12, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            {DAYS.find(d => d.key === expandedDay)?.label}
+          </Text>
+          <TableHeader />
+          {(program.weeklySchedule[expandedDay] || []).map((ex, i) => (
+            <TableRow key={i} ex={ex} index={i} editable={false} />
+          ))}
+        </View>
+      )}
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingBottom: 14 }}>
+        <Text style={{ color: T.textDim, fontSize: 12 }}>
+          {activeDays.length} active days · {new Date(program.createdAt).toLocaleDateString()}
+        </Text>
+        <TouchableOpacity
+          onPress={onStart}
+          style={{ backgroundColor: T.accentDark, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Start ›</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
+// ─── Exercise Picker Modal ────────────────────────────────────────────────────
+const ExercisePicker = ({ visible, exercises, loading, onAdd, onClose }) => {
+  const [search, setSearch] = useState('');
+
+  const filtered = search.trim()
+    ? exercises.filter(e =>
+        e.name.toLowerCase().includes(search.toLowerCase()) ||
+        (e.primaryMuscles || []).some(m => m.toLowerCase().includes(search.toLowerCase()))
+      ).slice(0, 60)
+    : exercises.slice(0, 60);
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' }}>
+        <View style={{ backgroundColor: T.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '85%' }}>
+          <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 4 }}>
+            <View style={{ width: 40, height: 4, backgroundColor: T.border, borderRadius: 2 }} />
+          </View>
+
+          <View style={{ paddingHorizontal: 16, paddingBottom: 10 }}>
+            <Text style={{ color: T.textPri, fontSize: 18, fontWeight: '700', marginBottom: 12 }}>Select Exercise</Text>
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search by name or muscle..."
+              placeholderTextColor={T.textDim}
+              style={{
+                backgroundColor: T.card,
+                borderRadius: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 11,
+                color: T.textPri,
+                fontSize: 15,
+                borderWidth: 1,
+                borderColor: T.border,
+              }}
+            />
+          </View>
+
+          {loading ? (
+            <View style={{ padding: 40, alignItems: 'center' }}>
+              <ActivityIndicator color={T.accent} size="large" />
+              <Text style={{ color: T.textSec, marginTop: 12, fontSize: 14 }}>Loading exercises...</Text>
+            </View>
+          ) : (
+            <FlatList
+              data={filtered}
+              keyExtractor={item => String(item.id)}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 10 }}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => onAdd(item)}
+                  activeOpacity={0.7}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: T.card,
+                    borderRadius: 12,
+                    padding: 12,
+                    marginBottom: 8,
+                    borderWidth: 1,
+                    borderColor: T.border,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: T.textPri, fontSize: 15, fontWeight: '600' }}>{item.name}</Text>
+                    <Text style={{ color: T.textSec, fontSize: 12, marginTop: 2 }}>
+                      {(item.primaryMuscles || []).join(', ')} · {item.equipment || 'body only'}
+                    </Text>
+                  </View>
+                  <View style={{ backgroundColor: T.accentDim, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1, borderColor: T.accent }}>
+                    <Text style={{ color: '#60a5fa', fontWeight: '700', fontSize: 13 }}>+ Add</Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <Text style={{ color: T.textDim, textAlign: 'center', marginTop: 30, fontSize: 14 }}>No exercises found</Text>
+              }
+            />
+          )}
+
+          <TouchableOpacity
+            onPress={onClose}
+            style={{ margin: 16, marginTop: 4, backgroundColor: T.card, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: T.border }}
+          >
+            <Text style={{ color: T.textSec, fontWeight: '600', fontSize: 15 }}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// ─── Create Program Modal ─────────────────────────────────────────────────────
+const CreateModal = ({ visible, type, exercises, loadingExs, onSave, onClose }) => {
+  const [name, setName]       = useState('');
+  const [desc, setDesc]       = useState('');
+  const [dailyExs, setDailyExs] = useState([]);
+  const [weekly, setWeekly]   = useState(EMPTY_WEEKLY());
+  const [activeDay, setActiveDay] = useState('mon');
+  const [showPicker, setShowPicker] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setName(''); setDesc('');
+      setDailyExs([]); setWeekly(EMPTY_WEEKLY()); setActiveDay('mon');
+    }
+  }, [visible]);
+
+  const currentList = type === 'daily' ? dailyExs : (weekly[activeDay] || []);
+
+  const handleAdd = (ex) => {
+    const entry = {
+      id: `${ex.id}_${Date.now()}`,
+      name: ex.name,
+      sets: '',
+      reps: '10-12',
+      weight: '',
+    };
+    if (type === 'daily') {
+      setDailyExs(prev => [...prev, entry]);
+    } else {
+      setWeekly(prev => ({ ...prev, [activeDay]: [...(prev[activeDay] || []), entry] }));
+    }
+    setShowPicker(false);
+  };
+
+  const handleRemove = (idx) => {
+    if (type === 'daily') {
+      setDailyExs(prev => prev.filter((_, i) => i !== idx));
+    } else {
+      setWeekly(prev => ({ ...prev, [activeDay]: prev[activeDay].filter((_, i) => i !== idx) }));
+    }
+  };
+
+  const handleChange = (idx, field, value) => {
+    if (type === 'daily') {
+      setDailyExs(prev => prev.map((e, i) => i === idx ? { ...e, [field]: value } : e));
+    } else {
+      setWeekly(prev => ({
+        ...prev,
+        [activeDay]: prev[activeDay].map((e, i) => i === idx ? { ...e, [field]: value } : e),
+      }));
+    }
+  };
+
+  const handleSave = () => {
+    if (!name.trim()) { Alert.alert('Error', 'Please enter a program name'); return; }
+    if (type === 'daily' && dailyExs.length === 0) { Alert.alert('Error', 'Add at least one exercise'); return; }
+    if (type === 'weekly' && !Object.values(weekly).some(d => d.length > 0)) {
+      Alert.alert('Error', 'Add exercises to at least one day'); return;
+    }
+    onSave({ name: name.trim(), description: desc.trim(), type, exercises: dailyExs, weeklySchedule: weekly });
+  };
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' }}>
+        <View style={{ backgroundColor: T.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '93%' }}>
+          <View style={{ alignItems: 'center', paddingTop: 12 }}>
+            <View style={{ width: 40, height: 4, backgroundColor: T.border, borderRadius: 2 }} />
+          </View>
+
+          <ScrollView contentContainerStyle={{ padding: 20 }} keyboardShouldPersistTaps="handled">
+            <Text style={{ color: T.textPri, fontSize: 20, fontWeight: '700', marginBottom: 20 }}>
+              New {type === 'daily' ? 'Daily' : 'Weekly'} Program
+            </Text>
+
+            <Text style={labelStyle}>Program Name *</Text>
+            <TextInput
+              value={name} onChangeText={setName}
+              placeholder="e.g. Push Day" placeholderTextColor={T.textDim}
+              style={inputStyle}
+            />
+
+            <Text style={labelStyle}>Description (optional)</Text>
+            <TextInput
+              value={desc} onChangeText={setDesc}
+              placeholder="Brief description..." placeholderTextColor={T.textDim}
+              style={[inputStyle, { minHeight: 56, textAlignVertical: 'top' }]}
+              multiline
+            />
+
+            {/* Day selector for weekly */}
+            {type === 'weekly' && (
+              <>
+                <Text style={labelStyle}>Day</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                  {DAYS.map(d => {
+                    const count = (weekly[d.key] || []).length;
+                    const sel = activeDay === d.key;
+                    return (
+                      <TouchableOpacity
+                        key={d.key}
+                        onPress={() => setActiveDay(d.key)}
+                        style={{
+                          backgroundColor: sel ? T.accentDark : T.card,
+                          borderRadius: 12,
+                          paddingHorizontal: 16,
+                          paddingVertical: 10,
+                          marginRight: 8,
+                          borderWidth: 1,
+                          borderColor: sel ? 'rgba(59,130,246,0.5)' : T.border,
+                          alignItems: 'center',
+                          minWidth: 52,
+                        }}
+                      >
+                        <Text style={{ color: sel ? '#fff' : T.textSec, fontWeight: '700', fontSize: 13 }}>{d.label}</Text>
+                        {count > 0 && (
+                          <Text style={{ color: sel ? 'rgba(255,255,255,0.7)' : T.accent, fontSize: 10, marginTop: 1 }}>{count}</Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+
+            {/* Exercise table */}
+            {currentList.length > 0 && (
+              <View style={{
+                backgroundColor: T.card,
+                borderRadius: 14,
+                padding: 12,
+                marginBottom: 12,
+                borderWidth: 1,
+                borderColor: T.border,
+              }}>
+                <View style={{ flexDirection: 'row', paddingHorizontal: 4, marginBottom: 6 }}>
+                  <Text style={{ flex: 3, color: T.textDim, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>Exercise</Text>
+                  <Text style={{ width: 44, color: T.textDim, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center' }}>Sets</Text>
+                  <Text style={{ width: 52, color: T.textDim, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center' }}>Reps</Text>
+                  <Text style={{ width: 44, color: T.textDim, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', textAlign: 'center' }}>kg</Text>
+                  <View style={{ width: 26 }} />
+                </View>
+                {currentList.map((ex, i) => (
+                  <TableRow
+                    key={ex.id}
+                    ex={ex}
+                    index={i}
+                    editable
+                    onRemove={() => handleRemove(i)}
+                    onChange={(field, val) => handleChange(i, field, val)}
+                  />
+                ))}
+              </View>
+            )}
+
+            {/* Add Exercise */}
+            <TouchableOpacity
+              onPress={() => setShowPicker(true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1.5,
+                borderColor: 'rgba(59,130,246,0.4)',
+                borderStyle: 'dashed',
+                borderRadius: 14,
+                padding: 14,
+                marginBottom: 20,
+                backgroundColor: 'rgba(59,130,246,0.06)',
+              }}
+            >
+              <Text style={{ color: '#60a5fa', fontWeight: '700', fontSize: 15 }}>+ Add Exercise</Text>
+            </TouchableOpacity>
+
+            {/* Actions */}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                onPress={onClose}
+                style={{ flex: 1, backgroundColor: T.card, borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: T.border }}
+              >
+                <Text style={{ color: T.textSec, fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSave}
+                style={{ flex: 2, backgroundColor: T.accentDark, borderRadius: 14, padding: 14, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Create Program</Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+
+      <ExercisePicker
+        visible={showPicker}
+        exercises={exercises}
+        loading={loadingExs}
+        onAdd={handleAdd}
+        onClose={() => setShowPicker(false)}
+      />
+    </Modal>
+  );
+};
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
 const ProgramsScreen = ({ navigate, userProfile, setCurrentWorkout }) => {
-  const [programs, setPrograms] = useState([]);
+  const [programs, setPrograms]         = useState([]);
+  const [activeTab, setActiveTab]       = useState('programs');
+  const [programType, setProgramType]   = useState('daily');
+  const [showCreate, setShowCreate]     = useState(false);
+  const [createType, setCreateType]     = useState('daily');
+  const [exercises, setExercises]       = useState(FALLBACK);
+  const [loadingExs, setLoadingExs]     = useState(false);
   const [workoutHistory, setWorkoutHistory] = useState([]);
-  const [activeTab, setActiveTab] = useState('programs');
-  const [programType, setProgramType] = useState('daily');
-  
-  // Modal states
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showExercisePicker, setShowExercisePicker] = useState(false);
-  const [availableExercises, setAvailableExercises] = useState([]);
-  const [filteredExercises, setFilteredExercises] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [loadingExercises, setLoadingExercises] = useState(false);
-  
-  // Program creation states
-  const [newProgram, setNewProgram] = useState({
-    name: '',
-    description: '',
-    type: 'daily',
-    exercises: [],
-    weeklySchedule: {}
-  });
-  
-  const [currentDay, setCurrentDay] = useState('monday');
-
-  const weekDays = [
-    { key: 'monday', label: 'Mon' },
-    { key: 'tuesday', label: 'Tue' },
-    { key: 'wednesday', label: 'Wed' },
-    { key: 'thursday', label: 'Thu' },
-    { key: 'friday', label: 'Fri' },
-    { key: 'saturday', label: 'Sat' },
-    { key: 'sunday', label: 'Sun' }
-  ];
 
   useEffect(() => {
     loadPrograms();
-    loadWorkoutHistory();
+    loadHistory();
+    // Load exercises in background — non-blocking
+    setLoadingExs(true);
+    loadExercisesFromCache()
+      .then(exs => setExercises(exs))
+      .catch(() => {})
+      .finally(() => setLoadingExs(false));
   }, []);
-
-  useEffect(() => {
-    if (availableExercises.length > 0) {
-      filterExercises();
-    }
-  }, [searchTerm, availableExercises]);
 
   const loadPrograms = async () => {
     try {
-      const savedPrograms = await AsyncStorage.getItem('workout_programs_v2');
-      if (savedPrograms) {
-        setPrograms(JSON.parse(savedPrograms));
-      }
-    } catch (error) {
-      console.error('Error loading programs:', error);
-    }
+      const saved = await AsyncStorage.getItem('workout_programs_v2');
+      if (saved) setPrograms(JSON.parse(saved));
+    } catch (_) {}
   };
 
-  const loadWorkoutHistory = async () => {
+  const loadHistory = async () => {
     try {
-      const savedHistory = await AsyncStorage.getItem('workout_history');
-      if (savedHistory) {
-        setWorkoutHistory(JSON.parse(savedHistory));
-      }
-    } catch (error) {
-      console.error('Error loading workout history:', error);
-    }
+      const h = await AsyncStorage.getItem('workout_history');
+      if (h) setWorkoutHistory(JSON.parse(h));
+    } catch (_) {}
   };
 
-  const loadAvailableExercises = async () => {
-    if (availableExercises.length > 0) {
-      return;
-    }
-    
-    setLoadingExercises(true);
+  const savePrograms = async (list) => {
     try {
-      console.log('Loading exercises from API for Programs...');
-      
-      let exercises = [];
-      
-      if (ExerciseAPI) {
-        try {
-          exercises = await ExerciseAPI.getExercisesForWorkout(userProfile);
-          console.log(`Successfully loaded ${exercises.length} exercises from API`);
-        } catch (apiError) {
-          console.error('API error:', apiError);
-          exercises = [];
-        }
-      }
-      
-      if (!exercises || exercises.length === 0) {
-        console.log('Using fallback exercises for Programs');
-        exercises = getFallbackExercises();
-      }
-      
-      setAvailableExercises(exercises);
-      setFilteredExercises(exercises.slice(0, 50));
-    } catch (error) {
-      console.error('Error loading exercises:', error);
-      const fallbackExercises = getFallbackExercises();
-      setAvailableExercises(fallbackExercises);
-      setFilteredExercises(fallbackExercises);
-    } finally {
-      setLoadingExercises(false);
-    }
+      await AsyncStorage.setItem('workout_programs_v2', JSON.stringify(list));
+      setPrograms(list);
+    } catch (_) {}
   };
 
-  const getFallbackExercises = () => {
-    return [
-      {
-        id: 'push_ups_fallback',
-        name: 'Push-ups',
-        category: 'strength',
-        level: 'beginner',
-        equipment: 'body only',
-        primaryMuscles: ['chest', 'triceps'],
-        secondaryMuscles: ['shoulders'],
-        instructions: ['Start in plank position', 'Lower chest to floor', 'Push back up']
-      },
-      {
-        id: 'squats_fallback',
-        name: 'Squats',
-        category: 'strength',
-        level: 'beginner',
-        equipment: 'body only',
-        primaryMuscles: ['quadriceps', 'glutes'],
-        secondaryMuscles: ['hamstrings'],
-        instructions: ['Stand with feet shoulder-width apart', 'Lower into sitting position', 'Stand back up']
-      },
-      {
-        id: 'plank_fallback',
-        name: 'Plank',
-        category: 'strength',
-        level: 'beginner',
-        equipment: 'body only',
-        primaryMuscles: ['core'],
-        secondaryMuscles: ['shoulders'],
-        instructions: ['Hold push-up position', 'Keep body straight', 'Hold for time']
-      },
-      {
-        id: 'lunges_fallback',
-        name: 'Lunges',
-        category: 'strength',
-        level: 'beginner',
-        equipment: 'body only',
-        primaryMuscles: ['quadriceps', 'glutes'],
-        secondaryMuscles: ['hamstrings'],
-        instructions: ['Step forward', 'Lower back knee', 'Push back to start']
-      },
-      {
-        id: 'jumping_jacks_fallback',
-        name: 'Jumping Jacks',
-        category: 'cardio',
-        level: 'beginner',
-        equipment: 'body only',
-        primaryMuscles: ['full body'],
-        secondaryMuscles: ['cardiovascular'],
-        instructions: ['Jump feet apart', 'Raise arms overhead', 'Jump back together']
-      },
-      {
-        id: 'mountain_climbers_fallback',
-        name: 'Mountain Climbers',
-        category: 'cardio',
-        level: 'intermediate',
-        equipment: 'body only',
-        primaryMuscles: ['core', 'shoulders'],
-        secondaryMuscles: ['legs'],
-        instructions: ['Start in plank', 'Alternate bringing knees to chest', 'Keep fast pace']
-      }
-    ];
+  const handleCreate = (type) => {
+    setCreateType(type);
+    setShowCreate(true);
   };
 
-  const filterExercises = () => {
-    if (!availableExercises || availableExercises.length === 0) {
-      return;
-    }
-    
-    if (!searchTerm.trim()) {
-      setFilteredExercises(availableExercises.slice(0, 50));
-      return;
-    }
-
-    const filtered = availableExercises.filter(exercise => 
-      exercise.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (exercise.primaryMuscles && exercise.primaryMuscles.some(muscle => 
-        muscle.toLowerCase().includes(searchTerm.toLowerCase())
-      ))
-    );
-    setFilteredExercises(filtered.slice(0, 50));
+  const handleSave = async (data) => {
+    const prog = { ...data, id: Date.now().toString(), createdAt: new Date().toISOString() };
+    const updated = [prog, ...programs];
+    await savePrograms(updated);
+    setShowCreate(false);
+    setProgramType(data.type); // Switch to the correct tab
+    setActiveTab('programs');  // Make sure programs tab is active
+    Alert.alert('Created!', `${data.name} saved successfully.`);
   };
 
-  const savePrograms = async (updatedPrograms) => {
-    try {
-      await AsyncStorage.setItem('workout_programs_v2', JSON.stringify(updatedPrograms));
-      setPrograms(updatedPrograms);
-    } catch (error) {
-      console.error('Error saving programs:', error);
-    }
+  const handleDelete = (id) => {
+    Alert.alert('Delete', 'Delete this program?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => savePrograms(programs.filter(p => p.id !== id)) },
+    ]);
   };
 
-  const startCreateProgram = (type) => {
-    setNewProgram({
-      name: '',
-      description: '',
-      type: type,
-      exercises: [],
-      weeklySchedule: type === 'weekly' ? {
-        monday: [], tuesday: [], wednesday: [], thursday: [],
-        friday: [], saturday: [], sunday: []
-      } : {}
-    });
-    setCurrentDay('monday');
-    setShowCreateModal(true);
-  };
-
-  const openExercisePicker = async () => {
-    console.log('Opening exercise picker for Programs...');
-    await loadAvailableExercises();
-    setShowExercisePicker(true);
-  };
-
-  const addExerciseToProgram = (exercise) => {
-    console.log('Adding exercise to program:', exercise.name);
-    
-    const exerciseWithParams = {
-      ...exercise,
-      sets: exercise.level === 'beginner' ? 3 : 4,
-      reps: exercise.category === 'cardio' ? '30 seconds' : '10-12',
-      rest: '60 seconds',
-      id: `${exercise.id}_${Date.now()}`
-    };
-
-    if (newProgram.type === 'daily') {
-      setNewProgram(prev => ({
-        ...prev,
-        exercises: [...prev.exercises, exerciseWithParams]
-      }));
+  const handleStart = (program) => {
+    if (program.type === 'weekly') {
+      const opts = DAYS
+        .filter(d => (program.weeklySchedule[d.key] || []).length > 0)
+        .map(d => ({
+          text: d.label,
+          onPress: () => {
+            setCurrentWorkout({
+              exercises: program.weeklySchedule[d.key],
+              estimatedTime: `${Math.max(15, program.weeklySchedule[d.key].length * 5)} min`,
+              difficulty: userProfile?.fitnessLevel || 'beginner',
+              focus: 'Custom Program',
+              totalExercises: program.weeklySchedule[d.key].length,
+              date: new Date().toDateString(),
+              fromProgram: `${program.name} – ${d.label}`,
+            });
+            navigate('generated_workout');
+          },
+        }));
+      Alert.alert('Choose Day', 'Which day to start?', [...opts, { text: 'Cancel', style: 'cancel' }]);
     } else {
-      setNewProgram(prev => ({
-        ...prev,
-        weeklySchedule: {
-          ...prev.weeklySchedule,
-          [currentDay]: [...prev.weeklySchedule[currentDay], exerciseWithParams]
-        }
-      }));
-    }
-    
-    setShowExercisePicker(false);
-    setSearchTerm('');
-    Alert.alert('Success', `${exercise.name} added to program!`);
-  };
-
-  const removeExerciseFromProgram = (exerciseIndex) => {
-    if (newProgram.type === 'daily') {
-      setNewProgram(prev => ({
-        ...prev,
-        exercises: prev.exercises.filter((_, index) => index !== exerciseIndex)
-      }));
-    } else {
-      setNewProgram(prev => ({
-        ...prev,
-        weeklySchedule: {
-          ...prev.weeklySchedule,
-          [currentDay]: prev.weeklySchedule[currentDay].filter((_, index) => index !== exerciseIndex)
-        }
-      }));
+      setCurrentWorkout({
+        exercises: program.exercises,
+        estimatedTime: `${Math.max(15, program.exercises.length * 5)} min`,
+        difficulty: userProfile?.fitnessLevel || 'beginner',
+        focus: 'Custom Program',
+        totalExercises: program.exercises.length,
+        date: new Date().toDateString(),
+        fromProgram: program.name,
+      });
+      navigate('generated_workout');
     }
   };
 
-  const saveNewProgram = async () => {
-    if (!newProgram.name.trim()) {
-      Alert.alert('Error', 'Please enter a program name');
-      return;
-    }
-
-    if (newProgram.type === 'daily' && newProgram.exercises.length === 0) {
-      Alert.alert('Error', 'Please add at least one exercise');
-      return;
-    }
-
-    if (newProgram.type === 'weekly') {
-      const hasExercises = Object.values(newProgram.weeklySchedule).some(dayExercises => dayExercises.length > 0);
-      if (!hasExercises) {
-        Alert.alert('Error', 'Please add exercises to at least one day');
-        return;
-      }
-    }
-
-    const programToSave = {
-      id: Date.now().toString(),
-      name: newProgram.name.trim(),
-      description: newProgram.description.trim() || 'Custom program',
-      type: newProgram.type,
-      exercises: newProgram.exercises,
-      weeklySchedule: newProgram.weeklySchedule,
-      createdAt: new Date().toISOString(),
-      estimatedTime: newProgram.type === 'daily' 
-        ? `${Math.max(15, newProgram.exercises.length * 3)} minutes`
-        : 'Varies by day'
-    };
-
-    const updatedPrograms = [programToSave, ...programs];
-    await savePrograms(updatedPrograms);
-    setShowCreateModal(false);
-    Alert.alert('Success', 'Program created successfully!');
-  };
-
-  const startProgram = (program, selectedDay = null) => {
-    let exercisesToUse = [];
-    let workoutName = program.name;
-
-    if (program.type === 'daily') {
-      exercisesToUse = program.exercises;
-    } else if (program.type === 'weekly') {
-      if (selectedDay) {
-        exercisesToUse = program.weeklySchedule[selectedDay] || [];
-        workoutName = `${program.name} - ${selectedDay.charAt(0).toUpperCase() + selectedDay.slice(1)}`;
-      } else {
-        showDaySelector(program);
-        return;
-      }
-    }
-
-    if (exercisesToUse.length === 0) {
-      Alert.alert('No Exercises', 'No exercises scheduled for this day');
-      return;
-    }
-
-    const workoutFromProgram = {
-      exercises: exercisesToUse,
-      estimatedTime: `${Math.max(15, exercisesToUse.length * 3)} minutes`,
-      difficulty: userProfile.fitnessLevel,
-      focus: 'Custom Program',
-      totalExercises: exercisesToUse.length,
-      date: new Date().toDateString(),
-      fromProgram: workoutName
-    };
-
-    setCurrentWorkout(workoutFromProgram);
-    navigate('generated_workout');
-  };
-
-  const showDaySelector = (program) => {
-    const dayOptions = weekDays.map(day => ({
-      text: day.label,
-      onPress: () => startProgram(program, day.key)
-    }));
-
-    Alert.alert(
-      'Select Day',
-      'Which day would you like to start?',
-      [
-        ...dayOptions,
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    );
-  };
-
-  const deleteProgram = (programId) => {
-    Alert.alert(
-      'Delete Program',
-      'Are you sure you want to delete this program?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const updatedPrograms = programs.filter(program => program.id !== programId);
-            await savePrograms(updatedPrograms);
-          }
-        }
-      ]
-    );
-  };
-
-  const getCurrentExercises = () => {
-    if (newProgram.type === 'daily') {
-      return newProgram.exercises;
-    } else {
-      return newProgram.weeklySchedule[currentDay] || [];
-    }
-  };
-
-  const renderExerciseItem = ({ item: exercise }) => (
-    <View style={{
-      backgroundColor: '#1F1F26',
-      padding: 16,
-      margin: 8,
-      borderRadius: 12,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center'
-    }}>
-      <View style={{ flex: 1 }}>
-        <Text style={{ color: 'white', fontSize: 16, fontWeight: '600' }}>
-          {exercise.name}
-        </Text>
-        <Text style={{ color: '#9CA3AF', fontSize: 14 }}>
-          {exercise.primaryMuscles ? exercise.primaryMuscles.join(', ') : 'Full Body'} • {exercise.equipment}
-        </Text>
-        <Text style={{ color: '#6B7280', fontSize: 12 }}>
-          {exercise.level} • {exercise.category}
-        </Text>
-      </View>
-      <TouchableOpacity
-        style={{
-          backgroundColor: '#10B981',
-          paddingHorizontal: 16,
-          paddingVertical: 8,
-          borderRadius: 8,
-          marginLeft: 12
-        }}
-        onPress={() => addExerciseToProgram(exercise)}
-        activeOpacity={0.7}
-      >
-        <Text style={{ color: 'white', fontWeight: '600' }}>Add</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  const renderProgramCard = (program) => (
-    <View key={program.id} style={styles.exerciseCard}>
-      <View style={styles.exerciseHeader}>
-        <View style={styles.exerciseInfo}>
-          <Text style={styles.exerciseName}>{program.name}</Text>
-          <Text style={styles.exerciseTarget}>{program.description}</Text>
-          <Text style={styles.exerciseDetails}>
-            {program.type.charAt(0).toUpperCase() + program.type.slice(1)} Program • {program.estimatedTime}
-          </Text>
-          {program.type === 'weekly' && (
-            <Text style={[styles.exerciseDetails, { color: '#10B981', marginTop: 4 }]}>
-              {Object.keys(program.weeklySchedule).filter(day => program.weeklySchedule[day].length > 0).length} days scheduled
-            </Text>
-          )}
-        </View>
-        <TouchableOpacity
-          style={styles.removeButton}
-          onPress={() => deleteProgram(program.id)}
-        >
-          <Text style={styles.removeButtonText}>×</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.exerciseFooter}>
-        <Text style={styles.equipmentText}>
-          Created {new Date(program.createdAt).toLocaleDateString()}
-        </Text>
-        <TouchableOpacity
-          style={{
-            backgroundColor: '#8B5CF6',
-            paddingHorizontal: 16,
-            paddingVertical: 8,
-            borderRadius: 12
-          }}
-          onPress={() => startProgram(program)}
-        >
-          <Text style={{ color: 'white', fontWeight: '600' }}>Start</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  const renderPrograms = () => (
-    <View style={styles.exercisesList}>
-      {/* Program Type Filter */}
-      <View style={{ 
-        flexDirection: 'row', 
-        marginHorizontal: 20, 
-        marginBottom: 20,
-        backgroundColor: '#1F1F26',
-        borderRadius: 16,
-        padding: 4
-      }}>
-        <TouchableOpacity
-          style={[
-            { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-            programType === 'daily' && { backgroundColor: '#8B5CF6' }
-          ]}
-          onPress={() => setProgramType('daily')}
-        >
-          <Text style={[
-            { fontWeight: '600', color: '#9CA3AF' },
-            programType === 'daily' && { color: 'white' }
-          ]}>
-            Daily Programs
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-            programType === 'weekly' && { backgroundColor: '#8B5CF6' }
-          ]}
-          onPress={() => setProgramType('weekly')}
-        >
-          <Text style={[
-            { fontWeight: '600', color: '#9CA3AF' },
-            programType === 'weekly' && { color: 'white' }
-          ]}>
-            Weekly Programs
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Create Program Buttons */}
-      <View style={{ paddingHorizontal: 20, marginBottom: 20 }}>
-        <TouchableOpacity 
-          style={[styles.generateButton, { marginBottom: 12 }]}
-          onPress={() => startCreateProgram('daily')}
-        >
-          <Text style={styles.generateButtonText}>+ Create Daily Program</Text>
-          <Text style={styles.generateSubtext}>Single workout routine</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.generateButton, { backgroundColor: '#059669' }]}
-          onPress={() => startCreateProgram('weekly')}
-        >
-          <Text style={styles.generateButtonText}>+ Create Weekly Program</Text>
-          <Text style={styles.generateSubtext}>7-day workout schedule</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Programs List */}
-      {programs.filter(p => programType === 'all' || p.type === programType).length === 0 ? (
-        <View style={styles.comingSoonContainer}>
-          <Text style={styles.comingSoonIcon}>📋</Text>
-          <Text style={styles.comingSoonTitle}>No {programType.charAt(0).toUpperCase() + programType.slice(1)} Programs</Text>
-          <Text style={styles.comingSoonText}>
-            Create your first {programType} program using exercises from our database!
-          </Text>
-        </View>
-      ) : (
-        programs
-          .filter(p => programType === 'all' || p.type === programType)
-          .map(renderProgramCard)
-      )}
-    </View>
-  );
-
-  const renderHistory = () => (
-    <View style={styles.exercisesList}>
-      {workoutHistory.length === 0 ? (
-        <View style={styles.comingSoonContainer}>
-          <Text style={styles.comingSoonIcon}>📈</Text>
-          <Text style={styles.comingSoonTitle}>No Workout History</Text>
-          <Text style={styles.comingSoonText}>
-            Complete your first workout to see your progress here!
-          </Text>
-        </View>
-      ) : (
-        workoutHistory.map((workout, index) => (
-          <View key={index} style={[styles.exerciseCard, { backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}>
-            <View style={styles.exerciseHeader}>
-              <Text style={styles.exerciseNumber}>✓</Text>
-              <View style={styles.exerciseInfo}>
-                <Text style={styles.exerciseName}>
-                  {workout.fromProgram || 'Generated Workout'}
-                </Text>
-                <Text style={styles.exerciseTarget}>
-                  {workout.totalExercises} exercises • Focus: {workout.focus}
-                </Text>
-                <Text style={styles.exerciseDetails}>
-                  Duration: {Math.floor(workout.duration / 60)}m • {workout.totalSetsCompleted} sets completed
-                </Text>
-              </View>
-              <View style={styles.exerciseStats}>
-                <Text style={styles.exerciseStatText}>{new Date(workout.completedAt).toLocaleDateString()}</Text>
-                <Text style={[styles.exerciseStatText, { color: '#10B981' }]}>Completed</Text>
-              </View>
-            </View>
-          </View>
-        ))
-      )}
-    </View>
-  );
+  const filtered = programType === 'ai' ? programs.filter(p => p.source === 'AI_WEEKLY') : programs.filter(p => p.type === programType && p.source !== 'AI_WEEKLY');
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: T.bg }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 20 }}>
           <View>
-            <Text style={styles.screenTitle}>My Programs</Text>
-            <Text style={styles.screenSubtitle}>Create custom daily & weekly routines</Text>
+            <Text style={{ color: T.textPri, fontSize: 32, fontFamily: 'BebasNeue-Regular', letterSpacing: 2 }}>My Programs</Text>
+            <Text style={{ color: T.textSec, fontSize: 13, marginTop: 2, fontWeight: '500' }}>Daily & weekly routines</Text>
           </View>
-          <TouchableOpacity 
-            style={styles.backButton}
+          <TouchableOpacity
             onPress={() => navigate('workout')}
+            style={{ backgroundColor: T.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 9, borderWidth: 1, borderColor: T.border }}
           >
-            <Text style={styles.backButtonText}>← Back</Text>
+            <Text style={{ color: T.textSec, fontWeight: '600', fontSize: 13 }}>← Back</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Tab Navigation */}
-        <View style={{ 
-          flexDirection: 'row', 
-          marginHorizontal: 20, 
-          marginBottom: 20,
-          backgroundColor: '#1F1F26',
-          borderRadius: 16,
-          padding: 4
-        }}>
-          <TouchableOpacity
-            style={[
-              { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-              activeTab === 'programs' && { backgroundColor: '#8B5CF6' }
-            ]}
-            onPress={() => setActiveTab('programs')}
-          >
-            <Text style={[
-              { fontWeight: '600', color: '#9CA3AF' },
-              activeTab === 'programs' && { color: 'white' }
-            ]}>
-              Programs
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
-              activeTab === 'history' && { backgroundColor: '#8B5CF6' }
-            ]}
-            onPress={() => setActiveTab('history')}
-          >
-            <Text style={[
-              { fontWeight: '600', color: '#9CA3AF' },
-              activeTab === 'history' && { color: 'white' }
-            ]}>
-              History
-            </Text>
-          </TouchableOpacity>
+        {/* Main tab bar */}
+        <View style={{ flexDirection: 'row', marginHorizontal: 20, marginBottom: 20, backgroundColor: T.surface, borderRadius: 14, padding: 4, borderWidth: 1, borderColor: T.border }}>
+          {[['programs', 'Programs'], ['history', 'History']].map(([tab, label]) => (
+            <TouchableOpacity
+              key={tab}
+              onPress={() => setActiveTab(tab)}
+              style={{ flex: 1, paddingVertical: 10, borderRadius: 11, alignItems: 'center', backgroundColor: activeTab === tab ? T.accentDark : 'transparent' }}
+            >
+              <Text style={{ color: activeTab === tab ? '#fff' : T.textSec, fontWeight: '700', fontSize: 14 }}>{label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
 
-        {activeTab === 'programs' ? renderPrograms() : renderHistory()}
-        <View style={styles.bottomSpacing} />
-      </ScrollView>
+        {activeTab === 'programs' ? (
+          <View style={{ paddingHorizontal: 20 }}>
 
-      {/* Create Program Modal */}
-      <Modal visible={showCreateModal} transparent={true} animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.profileModalContent, { maxHeight: '90%' }]}>
-            <Text style={styles.modalTitle}>
-              Create {newProgram.type.charAt(0).toUpperCase() + newProgram.type.slice(1)} Program
-            </Text>
-            
-            <View style={styles.profileInfoSection}>
-              <Text style={styles.profileLabel}>Program Name *</Text>
-              <TextInput
-                style={styles.profileInput}
-                value={newProgram.name}
-                onChangeText={(text) => setNewProgram(prev => ({...prev, name: text}))}
-                placeholder="e.g. Morning Strength Routine"
-                placeholderTextColor="#6B7280"
-              />
-            </View>
-
-            <View style={styles.profileInfoSection}>
-              <Text style={styles.profileLabel}>Description</Text>
-              <TextInput
-                style={[styles.profileInput, { minHeight: 60, textAlignVertical: 'top' }]}
-                value={newProgram.description}
-                onChangeText={(text) => setNewProgram(prev => ({...prev, description: text}))}
-                placeholder="Brief description..."
-                placeholderTextColor="#6B7280"
-                multiline
-              />
-            </View>
-
-            {newProgram.type === 'weekly' && (
-              <View style={styles.profileInfoSection}>
-                <Text style={styles.profileLabel}>Select Day</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {weekDays.map(day => (
-                    <TouchableOpacity
-                      key={day.key}
-                      style={{
-                        backgroundColor: currentDay === day.key ? '#8B5CF6' : '#1F1F26',
-                        paddingHorizontal: 16,
-                        paddingVertical: 8,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: currentDay === day.key ? '#8B5CF6' : '#374151',
-                        minWidth: 50,
-                        alignItems: 'center'
-                      }}
-                      onPress={() => setCurrentDay(day.key)}
-                    >
-                      <Text style={{
-                        color: currentDay === day.key ? 'white' : '#9CA3AF',
-                        fontWeight: '600',
-                        fontSize: 12
-                      }}>
-                        {day.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-
-          <TouchableOpacity 
-           style={styles.addExerciseButton}
-           onPress={() => {
-            console.log('Opening Programs exercise picker...');
-            setShowExercisePicker(true);
-            }}
-          >
-            <Text style={styles.addExerciseText}>+ Add Exercise</Text>
-          </TouchableOpacity>
-
-            <ScrollView style={{ maxHeight: 200 }}>
-              {getCurrentExercises().map((exercise, index) => (
-                <View key={index} style={styles.todayExerciseCard}>
-                  <View style={styles.exerciseCardHeader}>
-                    <Text style={styles.exerciseCardName}>{exercise.name}</Text>
-                    <TouchableOpacity onPress={() => removeExerciseFromProgram(index)}>
-                      <Text style={styles.removeButtonText}>×</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={styles.exerciseCardDetails}>
-                    {exercise.sets} sets × {exercise.reps} • Rest: {exercise.rest}
-                  </Text>
-                </View>
+            {/* Type filter */}
+            <View style={{ flexDirection: 'row', marginBottom: 16, backgroundColor: T.surface, borderRadius: 14, padding: 4, borderWidth: 1, borderColor: T.border }}>
+              {[['daily', 'Daily'], ['weekly', 'Weekly'], ['ai', 'AI']].map(([t, label]) => (
+                <TouchableOpacity
+                  key={t}
+                  onPress={() => setProgramType(t)}
+                  style={{ flex: 1, paddingVertical: 9, borderRadius: 11, alignItems: 'center', backgroundColor: programType === t ? (t === 'ai' ? 'rgba(139,92,246,0.18)' : 'rgba(59,130,246,0.12)') : 'transparent' }}
+                >
+                  <Text style={{ color: programType === t ? (t === 'ai' ? '#A78BFA' : '#60a5fa') : T.textSec, fontWeight: '700', fontSize: 13 }}>{label}</Text>
+                </TouchableOpacity>
               ))}
-            </ScrollView>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={styles.modalCancelButton}
-                onPress={() => setShowCreateModal(false)}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.modalSaveButton}
-                onPress={saveNewProgram}
-              >
-                <Text style={styles.modalSaveText}>Create</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Exercise Picker Modal */}
-      <Modal visible={showExercisePicker} transparent={true} animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.profileModalContent, { maxHeight: '90%' }]}>
-            <Text style={styles.modalTitle}>Add Exercise</Text>
-            
-            <View style={styles.profileInfoSection}>
-              <Text style={styles.profileLabel}>Search Exercises</Text>
-              <TextInput
-                style={styles.profileInput}
-                value={searchTerm}
-                onChangeText={setSearchTerm}
-                placeholder="Search by name or muscle group..."
-                placeholderTextColor="#6B7280"
-              />
             </View>
 
-            {loadingExercises ? (
-              <View style={styles.comingSoonContainer}>
-                <ActivityIndicator size="large" color="#8B5CF6" />
-                <Text style={styles.comingSoonTitle}>Loading exercises...</Text>
-              </View>
-            ) : filteredExercises.length === 0 ? (
-              <View style={styles.comingSoonContainer}>
-                <Text style={styles.comingSoonTitle}>No exercises found</Text>
-                <Text style={styles.comingSoonText}>Try a different search term</Text>
+            {/* Create buttons */}
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+              <TouchableOpacity
+                onPress={() => handleCreate('daily')}
+                style={{ flex: 1, backgroundColor: T.accentDark, borderRadius: 14, padding: 14, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>+ Daily</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleCreate('weekly')}
+                style={{ flex: 1, backgroundColor: 'rgba(59,130,246,0.08)', borderRadius: 14, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(59,130,246,0.3)' }}
+              >
+                <Text style={{ color: '#60a5fa', fontWeight: '700', fontSize: 14 }}>+ Weekly</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Programs list */}
+            {filtered.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 50 }}>
+                <Text style={{ fontSize: 40, marginBottom: 14 }}>📋</Text>
+                <Text style={{ color: T.textSec, fontSize: 16, fontWeight: '600', marginBottom: 6 }}>No {programType} programs</Text>
+                <Text style={{ color: T.textDim, fontSize: 14, textAlign: 'center' }}>Tap + to create your first {programType} program</Text>
               </View>
             ) : (
-              <FlatList
-                data={filteredExercises}
-                renderItem={renderExerciseItem}
-                keyExtractor={(item) => item.id}
-                style={{ maxHeight: 400 }}
-                nestedScrollEnabled={true}
-              />
+              filtered.map(p =>
+                p.type === 'weekly'
+                  ? <WeeklyCard key={p.id} program={p} onStart={() => handleStart(p)} onDelete={() => handleDelete(p.id)} />
+                  : <DailyCard  key={p.id} program={p} onStart={() => handleStart(p)} onDelete={() => handleDelete(p.id)} />
+              )
             )}
-
-            <TouchableOpacity 
-              style={styles.modalCancelButton}
-              onPress={() => {
-                setShowExercisePicker(false);
-                setSearchTerm('');
-              }}
-            >
-              <Text style={styles.modalCancelText}>Close</Text>
-            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        ) : (
+          <View style={{ paddingHorizontal: 20 }}>
+            {workoutHistory.length === 0 ? (
+              <View style={{ alignItems: 'center', paddingVertical: 50 }}>
+                <Text style={{ fontSize: 40, marginBottom: 14 }}>📈</Text>
+                <Text style={{ color: T.textSec, fontSize: 16, fontWeight: '600' }}>No history yet</Text>
+                <Text style={{ color: T.textDim, fontSize: 14, marginTop: 4 }}>Complete a workout to see it here</Text>
+              </View>
+            ) : (
+              workoutHistory.map((w, i) => (
+                <View key={i} style={{ backgroundColor: T.card, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: T.border }}>
+                  <Text style={{ color: T.green, fontWeight: '700', fontSize: 15, marginBottom: 4 }}>✓ {w.fromProgram || 'Workout'}</Text>
+                  <Text style={{ color: T.textSec, fontSize: 13 }}>{w.totalExercises} exercises · {w.focus}</Text>
+                  <Text style={{ color: T.textDim, fontSize: 12, marginTop: 2 }}>{new Date(w.completedAt).toLocaleDateString()}</Text>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+      </ScrollView>
+
+      <CreateModal
+        visible={showCreate}
+        type={createType}
+        exercises={exercises}
+        loadingExs={loadingExs}
+        onSave={handleSave}
+        onClose={() => setShowCreate(false)}
+      />
     </SafeAreaView>
   );
 };
