@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import WorkoutService from '../services/WorkoutService';
 import ExerciseAPI from '../services/ExerciseAPI';
 import LLMService from '../services/LLMService';
+import FirestoreService from '../services/FirestoreService';
 import { styles } from '../utils/styles';
 
 // ─── Wizard config data ────────────────────────────────────────────────────────
@@ -263,7 +264,8 @@ const WorkoutScreen = ({
   currentWorkout,
   setCurrentWorkout,
   logout,
-  isAuthenticated
+  isAuthenticated,
+  uid,
 }) => {
   const [todayWorkout, setTodayWorkout] = useState([]);
   const [workoutPrograms, setWorkoutPrograms] = useState([]);
@@ -587,6 +589,12 @@ const WorkoutScreen = ({
       programs.unshift(programEntry);
       await AsyncStorage.setItem('workout_programs_v2', JSON.stringify(programs.slice(0, 20)));
       setWorkoutPrograms(programs.slice(0, 20));
+
+      // Save to Firestore (non-blocking)
+      if (uid) {
+        FirestoreService.saveProgram(uid, programEntry);
+      }
+
       closeWizard();
       Alert.alert('Saved', programEntry.name + ' saved to My Programs.');
     } catch (err) {

@@ -12,7 +12,39 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
+import FirestoreService from '../services/FirestoreService';
 import { styles } from '../utils/styles';
+
+const DEFAULT_PROFILE = {
+  fitnessLevel: 'beginner',
+  equipment: ['body only'],
+  goals: ['strength'],
+  workoutDuration: 'medium',
+};
+
+const getAuthErrorMessage = (code) => {
+  switch (code) {
+    case 'auth/wrong-password':
+    case 'auth/invalid-credential':
+      return 'Incorrect email or password.';
+    case 'auth/user-not-found':
+      return 'No account found with this email.';
+    case 'auth/email-already-in-use':
+      return 'An account with this email already exists.';
+    case 'auth/invalid-email':
+      return 'Please enter a valid email address.';
+    case 'auth/weak-password':
+      return 'Password should be at least 6 characters.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Please try again later.';
+    case 'auth/network-request-failed':
+      return 'Network error. Please check your connection.';
+    default:
+      return 'Authentication failed. Please try again.';
+  }
+};
 
 const LoginScreen = ({ navigate, setUserProfile }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -25,7 +57,6 @@ const LoginScreen = ({ navigate, setUserProfile }) => {
   });
 
   const handleAuth = async () => {
-    // Validation
     if (!formData.email || !formData.password) {
       Alert.alert('Error', 'Please fill in all required fields');
       return;
@@ -44,62 +75,42 @@ const LoginScreen = ({ navigate, setUserProfile }) => {
     setLoading(true);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
       if (isLogin) {
-        // Login logic - for demo, any email/password works
-        const userData = {
-          email: formData.email,
-          name: formData.email.split('@')[0], // Use email prefix as name
-          isLoggedIn: true,
-          loginDate: new Date().toISOString()
-        };
-        
-        await AsyncStorage.setItem('user_data', JSON.stringify(userData));
-        
-        // Set default profile
-        const defaultProfile = {
-          fitnessLevel: 'beginner',
-          equipment: ['body only'],
-          goals: ['strength'],
-          workoutDuration: 'medium'
-        };
-        
-        setUserProfile(defaultProfile);
-        await AsyncStorage.setItem('user_profile', JSON.stringify(defaultProfile));
-        
-        // Go directly to workout page after login
-        navigate('workout');
+        await auth().signInWithEmailAndPassword(formData.email, formData.password);
+        // onAuthStateChanged in App.js handles navigation
+        await AsyncStorage.removeItem('user_data'); // clear any stale guest data
       } else {
-        // Signup logic
-        const userData = {
+        const { user } = await auth().createUserWithEmailAndPassword(
+          formData.email,
+          formData.password
+        );
+
+        // Save user metadata to Firestore
+        await FirestoreService.saveUserMeta(user.uid, {
           email: formData.email,
           name: formData.name,
-          isLoggedIn: true,
-          signupDate: new Date().toISOString()
-        };
-        
-        await AsyncStorage.setItem('user_data', JSON.stringify(userData));
-        
-        // Set default profile for new users
-        const defaultProfile = {
-          fitnessLevel: 'beginner',
-          equipment: ['body only'],
-          goals: ['strength'],
-          workoutDuration: 'medium'
-        };
-        
-        setUserProfile(defaultProfile);
-        await AsyncStorage.setItem('user_profile', JSON.stringify(defaultProfile));
-        
-        // New users go to workout page directly too
-        navigate('workout');
+          signupDate: firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Save default profile to Firestore
+        await FirestoreService.saveUserProfile(user.uid, {
+          ...DEFAULT_PROFILE,
+          name: formData.name,
+        });
+
+        // Cache locally
+        setUserProfile(DEFAULT_PROFILE);
+        await AsyncStorage.setItem('user_profile', JSON.stringify(DEFAULT_PROFILE));
+
+        // Migrate any pre-existing local data
+        FirestoreService.migrateFromLocalStorage(user.uid);
+
+        // onAuthStateChanged in App.js handles navigation
       }
     } catch (error) {
-      Alert.alert('Error', 'Authentication failed. Please try again.');
+      Alert.alert('Error', getAuthErrorMessage(error.code));
     }
-    
+
     setLoading(false);
   };
 
@@ -247,9 +258,20 @@ const LoginScreen = ({ navigate, setUserProfile }) => {
 
             {/* Forgot Password (only show on login) */}
             {isLogin && (
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.forgotPasswordButton}
-                onPress={() => Alert.alert('Forgot Password', 'Password reset feature coming soon!')}
+                onPress={async () => {
+                  if (!formData.email) {
+                    Alert.alert('Reset Password', 'Enter your email above, then tap Forgot Password.');
+                    return;
+                  }
+                  try {
+                    await auth().sendPasswordResetEmail(formData.email);
+                    Alert.alert('Reset Email Sent', `A password reset link has been sent to ${formData.email}.`);
+                  } catch (error) {
+                    Alert.alert('Error', getAuthErrorMessage(error.code));
+                  }
+                }}
               >
                 <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
               </TouchableOpacity>

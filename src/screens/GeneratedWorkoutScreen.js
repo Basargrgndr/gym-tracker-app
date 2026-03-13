@@ -14,13 +14,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import WorkoutService from '../services/WorkoutService';
 import ExerciseVideoModal from '../components/ExerciseVideoModal';
+import FirestoreService from '../services/FirestoreService';
 import { styles } from '../utils/styles';
 
-const GeneratedWorkoutScreen = ({ 
-  navigate, 
-  userProfile, 
-  currentWorkout, 
-  setCurrentWorkout 
+const GeneratedWorkoutScreen = ({
+  navigate,
+  userProfile,
+  currentWorkout,
+  setCurrentWorkout,
+  uid,
 }) => {
   const [completedSets, setCompletedSets] = useState({});
   const [showSetModal, setShowSetModal] = useState(false);
@@ -149,6 +151,11 @@ const GeneratedWorkoutScreen = ({
       
       await AsyncStorage.setItem('workout_history', JSON.stringify(history));
       await AsyncStorage.removeItem('current_workout_state');
+
+      // Save to Firestore for cloud sync (non-blocking)
+      if (uid) {
+        FirestoreService.saveWorkoutToHistory(uid, completedWorkoutData);
+      }
       
       Alert.alert(
         'Workout Complete!',

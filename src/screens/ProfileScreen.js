@@ -9,9 +9,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import FirestoreService from '../services/FirestoreService';
 import { styles } from '../utils/styles';
 
-const ProfileScreen = ({ navigate, userProfile, setUserProfile, saveProfile, logout, isAuthenticated }) => {
+const ProfileScreen = ({ navigate, userProfile, setUserProfile, saveProfile, logout, isAuthenticated, uid }) => {
   const [userInfo, setUserInfo] = useState({
     name: '',
     age: '',
@@ -29,18 +30,27 @@ const ProfileScreen = ({ navigate, userProfile, setUserProfile, saveProfile, log
 
   const loadUserInfo = async () => {
     try {
+      // Load from AsyncStorage first (fast)
       const saved = await AsyncStorage.getItem('user_info');
       if (saved) {
         const savedInfo = JSON.parse(saved);
         setUserInfo(prev => ({
           ...prev,
           ...savedInfo,
-          // Ensure profile settings are current
           fitnessLevel: userProfile.fitnessLevel || savedInfo.fitnessLevel,
           equipment: userProfile.equipment || savedInfo.equipment,
           goals: userProfile.goals || savedInfo.goals,
           workoutDuration: userProfile.workoutDuration || savedInfo.workoutDuration
         }));
+      }
+
+      // Sync from Firestore in background (overwrites with latest)
+      if (uid) {
+        const remoteProfile = await FirestoreService.getUserProfile(uid);
+        if (remoteProfile) {
+          setUserInfo(prev => ({ ...prev, ...remoteProfile }));
+          await AsyncStorage.setItem('user_info', JSON.stringify({ ...(saved ? JSON.parse(saved) : {}), ...remoteProfile }));
+        }
       }
     } catch (error) {
       console.error('Failed to load user info:', error);
@@ -50,16 +60,16 @@ const ProfileScreen = ({ navigate, userProfile, setUserProfile, saveProfile, log
   const saveUserInfo = async () => {
     try {
       await AsyncStorage.setItem('user_info', JSON.stringify(userInfo));
-      
-      // Also update the user profile with any changes
+
       const updatedProfile = {
+        ...userInfo,
         fitnessLevel: userInfo.fitnessLevel,
         equipment: userInfo.equipment,
         goals: userInfo.goals,
-        workoutDuration: userInfo.workoutDuration
+        workoutDuration: userInfo.workoutDuration,
       };
-      
-      await saveProfile(updatedProfile);
+
+      await saveProfile(updatedProfile); // updates App.js state + AsyncStorage + Firestore (via saveProfile)
       Alert.alert('Success', 'Profile updated successfully!');
     } catch (error) {
       console.error('Failed to save user info:', error);

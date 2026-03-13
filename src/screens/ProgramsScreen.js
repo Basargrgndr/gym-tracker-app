@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import FirestoreService from '../services/FirestoreService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -623,7 +624,7 @@ const CreateModal = ({ visible, type, exercises, loadingExs, onSave, onClose }) 
 };
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
-const ProgramsScreen = ({ navigate, userProfile, setCurrentWorkout }) => {
+const ProgramsScreen = ({ navigate, userProfile, setCurrentWorkout, uid }) => {
   const [programs, setPrograms]         = useState([]);
   const [activeTab, setActiveTab]       = useState('programs');
   const [programType, setProgramType]   = useState('daily');
@@ -646,15 +647,35 @@ const ProgramsScreen = ({ navigate, userProfile, setCurrentWorkout }) => {
 
   const loadPrograms = async () => {
     try {
+      // Load local first (fast)
       const saved = await AsyncStorage.getItem('workout_programs_v2');
       if (saved) setPrograms(JSON.parse(saved));
+
+      // Then sync from Firestore in background
+      if (uid) {
+        const remotePrograms = await FirestoreService.getPrograms(uid);
+        if (remotePrograms && remotePrograms.length > 0) {
+          setPrograms(remotePrograms);
+          await AsyncStorage.setItem('workout_programs_v2', JSON.stringify(remotePrograms));
+        }
+      }
     } catch (_) {}
   };
 
   const loadHistory = async () => {
     try {
+      // Load local first (fast)
       const h = await AsyncStorage.getItem('workout_history');
       if (h) setWorkoutHistory(JSON.parse(h));
+
+      // Then sync from Firestore in background
+      if (uid) {
+        const remoteHistory = await FirestoreService.getWorkoutHistory(uid);
+        if (remoteHistory && remoteHistory.length > 0) {
+          setWorkoutHistory(remoteHistory);
+          await AsyncStorage.setItem('workout_history', JSON.stringify(remoteHistory));
+        }
+      }
     } catch (_) {}
   };
 
@@ -674,16 +695,28 @@ const ProgramsScreen = ({ navigate, userProfile, setCurrentWorkout }) => {
     const prog = { ...data, id: Date.now().toString(), createdAt: new Date().toISOString() };
     const updated = [prog, ...programs];
     await savePrograms(updated);
+    if (uid) {
+      FirestoreService.saveProgram(uid, prog);
+    }
     setShowCreate(false);
-    setProgramType(data.type); // Switch to the correct tab
-    setActiveTab('programs');  // Make sure programs tab is active
+    setProgramType(data.type);
+    setActiveTab('programs');
     Alert.alert('Created!', `${data.name} saved successfully.`);
   };
 
   const handleDelete = (id) => {
     Alert.alert('Delete', 'Delete this program?', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => savePrograms(programs.filter(p => p.id !== id)) },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          savePrograms(programs.filter(p => p.id !== id));
+          if (uid) {
+            FirestoreService.deleteProgram(uid, id);
+          }
+        },
+      },
     ]);
   };
 
