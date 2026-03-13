@@ -880,6 +880,15 @@ const WorkoutScreen = ({
             <Text style={styles.programsButtonText}>My Programs</Text>
             <Text style={styles.programsSubtext}>Custom workout plans</Text>
           </TouchableOpacity>
+
+          {/* Progress */}
+          <TouchableOpacity
+            style={[styles.programsButton, { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.3)' }]}
+            onPress={() => navigate('progress')}
+          >
+            <Text style={[styles.programsButtonText, { color: '#f59e0b' }]}>My Progress</Text>
+            <Text style={styles.programsSubtext}>PRs, charts & history</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Quick Stats */}
