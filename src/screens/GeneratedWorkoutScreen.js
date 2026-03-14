@@ -394,7 +394,7 @@ const GeneratedWorkoutScreen = ({
 
                 <View style={styles.instructions}>
                   <Text style={styles.instructionsTitle}>Instructions:</Text>
-                  {exercise.instructions.map((instruction, i) => (
+                  {(exercise.instructions || []).map((instruction, i) => (
                     <Text key={i} style={styles.instructionText}>
                       • {instruction}
                     </Text>
