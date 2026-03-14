@@ -267,7 +267,7 @@ class ExerciseAPI {
     try {
       console.log('Fetching exercises from exercisedb.dev...');
       
-      const response = await fetch(`${API_BASE_URL}/exercises?limit=500&page=1`);
+      const response = await fetch(`${API_BASE_URL}/exercises?limit=100&page=1`);
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
