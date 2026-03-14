@@ -75,37 +75,49 @@ const LoginScreen = ({ navigate, setUserProfile }) => {
     setLoading(true);
 
     try {
-      if (isLogin) {
-        await auth().signInWithEmailAndPassword(formData.email, formData.password);
-        // onAuthStateChanged in App.js handles navigation
-        await AsyncStorage.removeItem('user_data'); // clear any stale guest data
+      // Try Firebase Auth first
+      let firebaseAvailable = true;
+      try { auth(); } catch (_) { firebaseAvailable = false; }
+
+      if (firebaseAvailable) {
+        if (isLogin) {
+          await auth().signInWithEmailAndPassword(formData.email, formData.password);
+          await AsyncStorage.removeItem('user_data');
+          // onAuthStateChanged in App.js handles navigation
+        } else {
+          const { user } = await auth().createUserWithEmailAndPassword(
+            formData.email,
+            formData.password
+          );
+
+          await FirestoreService.saveUserMeta(user.uid, {
+            email: formData.email,
+            name: formData.name,
+            signupDate: firestore.FieldValue.serverTimestamp(),
+          });
+
+          await FirestoreService.saveUserProfile(user.uid, {
+            ...DEFAULT_PROFILE,
+            name: formData.name,
+          });
+
+          setUserProfile(DEFAULT_PROFILE);
+          await AsyncStorage.setItem('user_profile', JSON.stringify(DEFAULT_PROFILE));
+          FirestoreService.migrateFromLocalStorage(user.uid);
+          // onAuthStateChanged in App.js handles navigation
+        }
       } else {
-        const { user } = await auth().createUserWithEmailAndPassword(
-          formData.email,
-          formData.password
-        );
-
-        // Save user metadata to Firestore
-        await FirestoreService.saveUserMeta(user.uid, {
+        // Firebase unavailable — local-only auth
+        const userData = {
           email: formData.email,
-          name: formData.name,
-          signupDate: firestore.FieldValue.serverTimestamp(),
-        });
-
-        // Save default profile to Firestore
-        await FirestoreService.saveUserProfile(user.uid, {
-          ...DEFAULT_PROFILE,
-          name: formData.name,
-        });
-
-        // Cache locally
+          name: isLogin ? formData.email.split('@')[0] : formData.name,
+          isLoggedIn: true,
+          loginDate: new Date().toISOString(),
+        };
+        await AsyncStorage.setItem('user_data', JSON.stringify(userData));
         setUserProfile(DEFAULT_PROFILE);
         await AsyncStorage.setItem('user_profile', JSON.stringify(DEFAULT_PROFILE));
-
-        // Migrate any pre-existing local data
-        FirestoreService.migrateFromLocalStorage(user.uid);
-
-        // onAuthStateChanged in App.js handles navigation
+        navigate('workout');
       }
     } catch (error) {
       Alert.alert('Error', getAuthErrorMessage(error.code));

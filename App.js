@@ -34,67 +34,72 @@ const App = () => {
   useEffect(() => {
     ExerciseAPI.preloadExercises();
 
-    // Listen to Firebase Auth state changes
-    const unsubscribe = auth().onAuthStateChanged(async (user) => {
-      if (user) {
-        // Firebase authenticated user
-        setIsAuthenticated(true);
-        setUid(user.uid);
+    let unsubscribe = () => {};
 
-        // Load profile: AsyncStorage first (fast), then Firestore in background
-        try {
-          const localProfile = await AsyncStorage.getItem('user_profile');
-          if (localProfile) {
-            setUserProfile(JSON.parse(localProfile));
-          }
-        } catch (_) {}
+    try {
+      // Try Firebase Auth — falls back to AsyncStorage if Firebase isn't configured
+      unsubscribe = auth().onAuthStateChanged(async (user) => {
+        if (user) {
+          setIsAuthenticated(true);
+          setUid(user.uid);
 
-        FirestoreService.getUserProfile(user.uid).then(remoteProfile => {
-          if (remoteProfile) {
-            setUserProfile(remoteProfile);
-            AsyncStorage.setItem('user_profile', JSON.stringify(remoteProfile)).catch(() => {});
-          }
-        });
+          // Load profile: AsyncStorage first (fast), then Firestore in background
+          try {
+            const localProfile = await AsyncStorage.getItem('user_profile');
+            if (localProfile) setUserProfile(JSON.parse(localProfile));
+          } catch (_) {}
 
-        setCurrentScreen('workout');
-      } else {
-        // Check for guest session (AsyncStorage only)
-        try {
-          const userData = await AsyncStorage.getItem('user_data');
-          if (userData) {
-            const user = JSON.parse(userData);
-            if (user.isGuest) {
-              setIsAuthenticated(true);
-              setUid(null);
-              const profileData = await AsyncStorage.getItem('user_profile');
-              if (profileData) setUserProfile(JSON.parse(profileData));
-              setCurrentScreen('workout');
-              return;
+          FirestoreService.getUserProfile(user.uid).then(remoteProfile => {
+            if (remoteProfile) {
+              setUserProfile(remoteProfile);
+              AsyncStorage.setItem('user_profile', JSON.stringify(remoteProfile)).catch(() => {});
             }
-          }
-        } catch (_) {}
+          });
 
-        setIsAuthenticated(false);
-        setUid(null);
-        setCurrentScreen('login');
-      }
-    });
+          setCurrentScreen('workout');
+        } else {
+          // Check for guest session (AsyncStorage only)
+          await checkLocalSession();
+        }
+      });
+    } catch (firebaseError) {
+      // Firebase not configured — fall back to AsyncStorage-only mode
+      console.warn('Firebase unavailable, using local storage:', firebaseError.message);
+      checkLocalSession();
+    }
 
-    return unsubscribe;
+    return () => unsubscribe();
   }, []);
+
+  const checkLocalSession = async () => {
+    try {
+      const userData = await AsyncStorage.getItem('user_data');
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        if (parsed.isLoggedIn || parsed.isGuest) {
+          setIsAuthenticated(true);
+          setUid(null);
+          const profileData = await AsyncStorage.getItem('user_profile');
+          if (profileData) setUserProfile(JSON.parse(profileData));
+          setCurrentScreen('workout');
+          return;
+        }
+      }
+    } catch (_) {}
+    setIsAuthenticated(false);
+    setUid(null);
+    setCurrentScreen('login');
+  };
 
   const logout = async () => {
     try {
       const userData = await AsyncStorage.getItem('user_data');
       const isGuest = userData ? JSON.parse(userData).isGuest : false;
 
-      if (isGuest) {
-        await AsyncStorage.multiRemove(['user_data', 'user_profile', 'user_info']);
-      } else {
-        await auth().signOut();
-        await AsyncStorage.multiRemove(['user_data', 'user_profile', 'user_info']);
+      if (!isGuest) {
+        try { await auth().signOut(); } catch (_) {}
       }
-
+      await AsyncStorage.multiRemove(['user_data', 'user_profile', 'user_info']);
       setIsAuthenticated(false);
       setUid(null);
       setCurrentScreen('login');
