@@ -1,7 +1,7 @@
 // Enhanced ExerciseAPI.js with comprehensive video mapping
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE_URL = 'https://exercisedb.dev/api';
+const API_BASE_URL = 'https://exercisedb.dev/api/v1';
 const IMAGE_BASE_URL = 'https://exercisedb.dev';
 
 class ExerciseAPI {
@@ -274,7 +274,8 @@ class ExerciseAPI {
       }
       
       const data = await response.json();
-      const exercises = data.exercises || data || [];
+      // v1 API wraps results in { success, metadata, data: [] }
+      const exercises = data.data || data.exercises || data || [];
       
       const transformedExercises = exercises.map(ex => this.transformExerciseDB(ex));
       
