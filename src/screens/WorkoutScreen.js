@@ -931,23 +931,29 @@ const WorkoutScreen = ({
           </TouchableOpacity>
 
           {/* AI Chat */}
-          <TouchableOpacity style={styles.llmButton} onPress={handleAIAssistant}>
-            <Text style={styles.llmButtonText}>AI Fitness Assistant</Text>
-            <Text style={styles.llmSubtext}>Ask questions, get advice</Text>
+          <TouchableOpacity
+            style={[styles.programsButton, { backgroundColor: 'rgba(139,92,246,0.12)', borderColor: 'rgba(139,92,246,0.3)' }]}
+            onPress={handleAIAssistant}
+          >
+            <Text style={[styles.programsButtonText, { color: '#a78bfa' }]}>AI Fitness Assistant</Text>
+            <Text style={styles.programsSubtext}>Ask questions, get advice</Text>
           </TouchableOpacity>
 
           {/* My Programs */}
-          <TouchableOpacity style={styles.programsButton} onPress={() => navigate('programs')}>
-            <Text style={styles.programsButtonText}>My Programs</Text>
+          <TouchableOpacity
+            style={[styles.programsButton, { backgroundColor: 'rgba(139,92,246,0.12)', borderColor: 'rgba(139,92,246,0.3)' }]}
+            onPress={() => navigate('programs')}
+          >
+            <Text style={[styles.programsButtonText, { color: '#a78bfa' }]}>My Programs</Text>
             <Text style={styles.programsSubtext}>Custom workout plans</Text>
           </TouchableOpacity>
 
           {/* Progress */}
           <TouchableOpacity
-            style={[styles.programsButton, { backgroundColor: 'rgba(245,158,11,0.12)', borderColor: 'rgba(245,158,11,0.3)' }]}
+            style={[styles.programsButton, { backgroundColor: 'rgba(139,92,246,0.12)', borderColor: 'rgba(139,92,246,0.3)' }]}
             onPress={() => navigate('progress')}
           >
-            <Text style={[styles.programsButtonText, { color: '#f59e0b' }]}>My Progress</Text>
+            <Text style={[styles.programsButtonText, { color: '#a78bfa' }]}>My Progress</Text>
             <Text style={styles.programsSubtext}>PRs, charts & history</Text>
           </TouchableOpacity>
 
