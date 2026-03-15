@@ -244,6 +244,20 @@ const wiz = {
     fontSize: 16,
     fontWeight: '700',
   },
+  regenerateBtn: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#8B5CF6',
+    backgroundColor: 'rgba(139,92,246,0.1)',
+  },
+  regenerateBtnText: {
+    color: '#A78BFA',
+    fontSize: 15,
+    fontWeight: '600',
+  },
   dismissBtn: {
     borderRadius: 14,
     paddingVertical: 14,
@@ -821,6 +835,9 @@ const WorkoutScreen = ({
 
           <TouchableOpacity style={wiz.saveBtn} onPress={saveGeneratedProgram}>
             <Text style={wiz.saveBtnText}>Save to My Programs</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={wiz.regenerateBtn} onPress={runWizardGeneration} disabled={generatingAIWorkout}>
+            <Text style={wiz.regenerateBtnText}>↺  Regenerate</Text>
           </TouchableOpacity>
           <TouchableOpacity style={wiz.dismissBtn} onPress={closeWizard}>
             <Text style={wiz.dismissBtnText}>Dismiss</Text>

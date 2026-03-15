@@ -53,25 +53,49 @@ class LLMService {
 
   createWeeklyProgramPrompt({ goal, daysPerWeek, splitType, userProfile, exerciseDatabase }) {
     const GOAL_LABELS = {
-      bodybuilding: 'Bodybuilding (muscle hypertrophy)',
-      calisthenics: 'Calisthenics (bodyweight mastery)',
-      weight_loss: 'Weight loss & conditioning',
-      strength: 'Powerlifting / max strength',
-      general: 'General fitness & health',
+      bodybuilding:   'Bodybuilding (muscle hypertrophy, 8-12 reps, moderate-heavy weight)',
+      calisthenics:   'Calisthenics (bodyweight mastery, progressions, skill work)',
+      weight_loss:    'Weight loss & conditioning (higher reps, shorter rest, supersets)',
+      strength:       'Powerlifting / max strength (3-6 reps, heavy compound lifts)',
+      general:        'General fitness & health (balanced, 3-4 sets, 10-15 reps)',
+      // profile goal aliases
+      'muscle building': 'Bodybuilding (muscle hypertrophy)',
+      cardio:            'Weight loss & conditioning',
     };
 
     const SPLIT_LABELS = {
-      full_body: 'Full Body (every session works all muscle groups)',
-      upper_lower: 'Upper / Lower split',
-      push_pull_legs: 'Push / Pull / Legs split',
-      bro_split: 'Body-part split (chest day, back day, etc.)',
+      full_body:        'Full Body (every session works all major muscle groups)',
+      upper_lower:      'Upper / Lower split (alternate upper and lower body days)',
+      push_pull_legs:   'Push / Pull / Legs split (PPL)',
+      bro_split:        'Body-part split (one main muscle group per day)',
     };
 
-    const sampleExercises = exerciseDatabase
-      .slice(0, 30)
-      .map(
-        (ex) =>
-          `${ex.name} — muscles: ${ex.primaryMuscles?.join(', ') || 'full body'} — equipment: ${ex.equipment?.join(', ') || 'bodyweight'}`
+    // Map workoutDuration string to readable minutes
+    const SESSION_MAP = { short: '30–40', medium: '45–60', long: '60–75' };
+    const sessionMins = SESSION_MAP[userProfile?.workoutDuration]
+      || (userProfile?.sessionTime ? String(userProfile.sessionTime) : '45–60');
+
+    // Filter exercises to match user equipment so AI suggestions are realistic
+    const userEquipment = (userProfile?.equipment || []).map(e => e.toLowerCase());
+    let filtered = exerciseDatabase;
+    if (userEquipment.length > 0) {
+      filtered = exerciseDatabase.filter(ex => {
+        const exEquip = (ex.equipment || []).map(e => e.toLowerCase());
+        // always include bodyweight; otherwise check overlap with user equipment
+        const hasBodyweight = exEquip.some(e => e === 'body only' || e === 'bodyweight');
+        const hasUserEquip  = exEquip.some(e =>
+          userEquipment.some(ue => e.includes(ue) || ue.includes(e))
+        );
+        return hasBodyweight || hasUserEquip;
+      });
+      // Safety: if too few matching exercises, fall back to full list
+      if (filtered.length < 15) filtered = exerciseDatabase;
+    }
+
+    const sampleExercises = filtered
+      .slice(0, 50)
+      .map(ex =>
+        `${ex.name} — muscles: ${ex.primaryMuscles?.join(', ') || 'full body'} — equipment: ${(ex.equipment || ['bodyweight']).join(', ')}`
       )
       .join('\n');
 
@@ -82,29 +106,29 @@ USER PROFILE:
 - Primary goal: ${GOAL_LABELS[goal] || goal}
 - Split type: ${SPLIT_LABELS[splitType] || splitType}
 - Training days per week: ${daysPerWeek}
-- Available equipment: ${userProfile?.equipment?.join(', ') || 'gym (barbells, dumbbells, cables, machines)'}
-- Session duration: ${userProfile?.sessionTime || 60} minutes
+- Available equipment: ${userEquipment.length > 0 ? userEquipment.join(', ') : 'full gym (barbells, dumbbells, cables, machines)'}
+- Session duration: ${sessionMins} minutes
 
-AVAILABLE EXERCISES (sample):
+AVAILABLE EXERCISES (use ONLY exercises from this list when possible):
 ${sampleExercises}
 
 RULES:
-- Produce exactly ${daysPerWeek} training days, name them Day 1 … Day ${daysPerWeek}.
-- Rest days should NOT appear as workout days.
-- Each day must have a "dayName" (e.g. "Push Day", "Full Body A", "Chest & Triceps").
-- Each day must have 4–7 exercises.
-- For each exercise provide: name, sets (number), reps (string like "8-12" or "5"), rest ("60 seconds"), notes, primaryMuscles (array).
-- Tailor volume/intensity to the goal: hypertrophy → 3-4 sets 8-12 reps; strength → 4-5 sets 3-6 reps; weight loss → higher reps + supersets.
-- Add a warmup and cooldown note per day.
+1. Produce EXACTLY ${daysPerWeek} training days (Day 1 to Day ${daysPerWeek}). No rest days in the output.
+2. Each day needs a "dayName" matching the split (e.g. "Push Day", "Upper Body A", "Legs").
+3. Each day: 4–6 exercises. No more, no less.
+4. Volume by goal: strength → 4-5 sets × 3-6 reps; hypertrophy → 3-4 sets × 8-12 reps; weight_loss → 3 sets × 12-20 reps; general → 3 sets × 10-15 reps.
+5. Only use exercises compatible with the user's equipment. Prioritize exercises from the list above.
+6. For each exercise include 2-3 short "instructions" steps (imperative sentences, max 10 words each).
+7. Include warmup and cooldown notes per day.
 
-Respond ONLY with this exact JSON (no markdown, no extra text):
+Respond ONLY with this exact JSON (no markdown fences, no text outside the JSON):
 
 {
   "programName": "...",
   "goal": "${goal}",
   "splitType": "${splitType}",
   "daysPerWeek": ${daysPerWeek},
-  "estimatedSessionTime": "60 minutes",
+  "estimatedSessionTime": "${sessionMins} minutes",
   "days": [
     {
       "dayNumber": 1,
@@ -119,6 +143,7 @@ Respond ONLY with this exact JSON (no markdown, no extra text):
           "reps": "8-10",
           "rest": "90 seconds",
           "notes": "Control the eccentric, 2 sec down",
+          "instructions": ["Lie flat on bench with feet on floor", "Lower bar to chest with control", "Press up powerfully to full extension"],
           "primaryMuscles": ["chest", "triceps", "shoulders"]
         }
       ]
@@ -142,38 +167,72 @@ Respond ONLY with this exact JSON (no markdown, no extra text):
   }
 
   getFallbackWeeklyProgram(daysPerWeek = 3) {
-    const days = [];
+    // 6 day templates so the fallback works for any daysPerWeek 2-6
     const dayTemplates = [
       {
-        dayName: 'Full Body A',
-        focus: 'Compound movements',
+        dayName: 'Push Day',
+        focus: 'Chest, Shoulders, Triceps',
         exercises: [
-          { name: 'Barbell Squat', sets: 4, reps: '8-10', rest: '90 seconds', notes: '', primaryMuscles: ['quadriceps', 'glutes'] },
-          { name: 'Bench Press', sets: 4, reps: '8-10', rest: '90 seconds', notes: '', primaryMuscles: ['chest', 'triceps'] },
-          { name: 'Bent-over Row', sets: 4, reps: '8-10', rest: '90 seconds', notes: '', primaryMuscles: ['back', 'biceps'] },
+          { name: 'Bench Press',       sets: 4, reps: '8-10',  rest: '90 seconds', notes: 'Control descent', instructions: ['Set up with shoulder blades retracted', 'Lower bar to mid-chest', 'Press up to full extension'], primaryMuscles: ['chest', 'triceps', 'shoulders'] },
+          { name: 'Overhead Press',    sets: 3, reps: '8-10',  rest: '75 seconds', notes: 'Brace your core',  instructions: ['Stand with bar at shoulder height', 'Press overhead until arms lock out', 'Lower under control'],           primaryMuscles: ['shoulders', 'triceps'] },
+          { name: 'Incline Dumbbell Press', sets: 3, reps: '10-12', rest: '75 seconds', notes: '', instructions: ['Lie on incline bench', 'Press dumbbells up and slightly inward', 'Lower with control'],                            primaryMuscles: ['chest', 'shoulders'] },
+          { name: 'Tricep Dips',       sets: 3, reps: '10-12', rest: '60 seconds', notes: 'Lean slightly forward', instructions: ['Grip parallel bars', 'Lower until elbows reach 90°', 'Push back up fully'],                        primaryMuscles: ['triceps', 'chest'] },
         ],
       },
       {
-        dayName: 'Full Body B',
-        focus: 'Accessory work',
+        dayName: 'Pull Day',
+        focus: 'Back, Biceps',
         exercises: [
-          { name: 'Romanian Deadlift', sets: 3, reps: '10-12', rest: '75 seconds', notes: '', primaryMuscles: ['hamstrings', 'glutes'] },
-          { name: 'Overhead Press', sets: 3, reps: '10-12', rest: '75 seconds', notes: '', primaryMuscles: ['shoulders', 'triceps'] },
-          { name: 'Pull-ups', sets: 3, reps: '8-10', rest: '75 seconds', notes: '', primaryMuscles: ['back', 'biceps'] },
+          { name: 'Pull-ups',          sets: 4, reps: '6-10',  rest: '90 seconds', notes: 'Full ROM', instructions: ['Hang from bar with overhand grip', 'Pull chest toward bar', 'Lower slowly'],                                    primaryMuscles: ['back', 'biceps'] },
+          { name: 'Bent-over Row',     sets: 4, reps: '8-10',  rest: '75 seconds', notes: 'Keep back flat', instructions: ['Hinge at hips with slight knee bend', 'Row bar to lower chest', 'Squeeze shoulder blades at top'],        primaryMuscles: ['back', 'biceps'] },
+          { name: 'Face Pulls',        sets: 3, reps: '12-15', rest: '60 seconds', notes: 'Elbows high', instructions: ['Attach rope to cable at face height', 'Pull toward face with elbows flared', 'Squeeze rear delts'],          primaryMuscles: ['rear delts', 'back'] },
+          { name: 'Dumbbell Curl',     sets: 3, reps: '10-12', rest: '60 seconds', notes: '', instructions: ['Stand with dumbbells at sides', 'Curl up without swinging', 'Lower with control'],                                      primaryMuscles: ['biceps'] },
         ],
       },
       {
-        dayName: 'Full Body C',
-        focus: 'Volume',
+        dayName: 'Legs Day',
+        focus: 'Quadriceps, Hamstrings, Glutes',
         exercises: [
-          { name: 'Lunges', sets: 3, reps: '12 each', rest: '60 seconds', notes: '', primaryMuscles: ['quadriceps', 'glutes'] },
-          { name: 'Dumbbell Press', sets: 3, reps: '12-15', rest: '60 seconds', notes: '', primaryMuscles: ['chest', 'shoulders'] },
-          { name: 'Cable Row', sets: 3, reps: '12-15', rest: '60 seconds', notes: '', primaryMuscles: ['back', 'biceps'] },
+          { name: 'Barbell Squat',     sets: 4, reps: '8-10',  rest: '120 seconds', notes: 'Depth to parallel', instructions: ['Bar on upper traps, feet shoulder-width', 'Squat down keeping chest tall', 'Drive through heels to stand'], primaryMuscles: ['quadriceps', 'glutes'] },
+          { name: 'Romanian Deadlift', sets: 3, reps: '10-12', rest: '90 seconds',  notes: 'Feel hamstring stretch', instructions: ['Hold bar at hips', 'Hinge forward keeping back flat', 'Squeeze glutes to stand'], primaryMuscles: ['hamstrings', 'glutes'] },
+          { name: 'Leg Press',         sets: 3, reps: '12-15', rest: '75 seconds',  notes: 'Don\'t lock knees', instructions: ['Sit in machine with feet shoulder-width on platform', 'Lower sled until 90° knee angle', 'Press back without locking'], primaryMuscles: ['quadriceps', 'glutes'] },
+          { name: 'Calf Raises',       sets: 4, reps: '15-20', rest: '60 seconds',  notes: 'Full stretch at bottom', instructions: ['Stand on edge of step', 'Lower heel below step level', 'Rise onto toes fully'],                  primaryMuscles: ['calves'] },
+        ],
+      },
+      {
+        dayName: 'Upper Body A',
+        focus: 'Chest, Back',
+        exercises: [
+          { name: 'Incline Bench Press', sets: 4, reps: '8-10',  rest: '90 seconds', notes: '',           instructions: ['Set bench to 30-45°', 'Lower bar to upper chest', 'Press explosively'], primaryMuscles: ['chest', 'shoulders'] },
+          { name: 'Cable Row',           sets: 4, reps: '10-12', rest: '75 seconds', notes: 'Chest tall', instructions: ['Sit upright with slight lean back', 'Pull handle to abdomen', 'Pause and squeeze'],                        primaryMuscles: ['back', 'biceps'] },
+          { name: 'Lateral Raise',       sets: 3, reps: '12-15', rest: '60 seconds', notes: 'Control descent', instructions: ['Hold dumbbells at sides', 'Raise to shoulder height with slight bend', 'Lower slowly'],              primaryMuscles: ['shoulders'] },
+          { name: 'Hammer Curl',         sets: 3, reps: '10-12', rest: '60 seconds', notes: '',           instructions: ['Hold dumbbells in neutral grip', 'Curl without rotating wrist', 'Lower with control'],                    primaryMuscles: ['biceps', 'brachialis'] },
+        ],
+      },
+      {
+        dayName: 'Lower Body B',
+        focus: 'Glutes, Hamstrings',
+        exercises: [
+          { name: 'Deadlift',           sets: 4, reps: '5-6',   rest: '120 seconds', notes: 'Brace core hard', instructions: ['Stand over bar, feet hip-width', 'Grip bar, brace and pull', 'Lock hips at top'],                    primaryMuscles: ['back', 'hamstrings', 'glutes'] },
+          { name: 'Lunges',             sets: 3, reps: '10 each', rest: '75 seconds', notes: 'Step wide',     instructions: ['Stand tall with dumbbells', 'Step forward and lower knee toward floor', 'Push back to start'],          primaryMuscles: ['quadriceps', 'glutes'] },
+          { name: 'Leg Curl',           sets: 3, reps: '12-15', rest: '60 seconds', notes: 'Squeeze at top', instructions: ['Lie face down on machine', 'Curl weight toward glutes', 'Lower slowly'],                               primaryMuscles: ['hamstrings'] },
+          { name: 'Hip Thrust',         sets: 3, reps: '12-15', rest: '75 seconds', notes: 'Squeeze glutes at top', instructions: ['Sit with upper back on bench', 'Drive hips up with bar on hip crease', 'Hold at top 1 sec'],    primaryMuscles: ['glutes', 'hamstrings'] },
+        ],
+      },
+      {
+        dayName: 'Full Body',
+        focus: 'Total Body Volume',
+        exercises: [
+          { name: 'Dumbbell Press',     sets: 3, reps: '12-15', rest: '60 seconds', notes: '', instructions: ['Hold dumbbells at chest level', 'Press up and slightly inward', 'Lower with control'],                               primaryMuscles: ['chest', 'shoulders'] },
+          { name: 'Dumbbell Row',       sets: 3, reps: '12-15', rest: '60 seconds', notes: '', instructions: ['Brace on bench with one hand', 'Row dumbbell to hip', 'Squeeze lat at top'],                                         primaryMuscles: ['back', 'biceps'] },
+          { name: 'Goblet Squat',       sets: 3, reps: '15',    rest: '60 seconds', notes: '', instructions: ['Hold dumbbell at chest', 'Squat with elbows inside knees', 'Stand and repeat'],                                       primaryMuscles: ['quadriceps', 'glutes'] },
+          { name: 'Plank',              sets: 3, reps: '45 sec',rest: '45 seconds', notes: 'Squeeze everything', instructions: ['Forearms and toes on floor', 'Maintain straight line from head to heels', 'Breathe steadily'],     primaryMuscles: ['core'] },
         ],
       },
     ];
 
-    for (let i = 0; i < Math.min(daysPerWeek, 3); i++) {
+    const days = [];
+    for (let i = 0; i < Math.min(daysPerWeek, dayTemplates.length); i++) {
       days.push({
         dayNumber: i + 1,
         dayName: dayTemplates[i].dayName,
@@ -185,13 +244,13 @@ Respond ONLY with this exact JSON (no markdown, no extra text):
     }
 
     return {
-      programName: 'Basic Full Body Program',
+      programName: 'Strength & Fitness Program',
       goal: 'general',
-      splitType: 'full_body',
+      splitType: daysPerWeek <= 3 ? 'full_body' : daysPerWeek <= 4 ? 'upper_lower' : 'push_pull_legs',
       daysPerWeek,
-      estimatedSessionTime: '45 minutes',
+      estimatedSessionTime: '45-60 minutes',
       days,
-      generalTips: 'Rest at least one day between sessions. Stay hydrated.',
+      generalTips: 'Progressive overload: add a little weight or reps each week. Stay hydrated and prioritize sleep for recovery.',
     };
   }
 
@@ -267,7 +326,8 @@ Respond ONLY with this exact JSON (no markdown, no extra text):
               { role: 'user', content: prompt }
             ],
             temperature: type === 'weekly_program' ? 0.6 : type === 'workout_generation' ? 0.7 : 0.8,
-            max_tokens: type === 'weekly_program' ? 2500 : type === 'workout_generation' ? 1000 : 500
+            // weekly_program needs more tokens for 6-day programs with instructions
+            max_tokens: type === 'weekly_program' ? 4500 : type === 'workout_generation' ? 1200 : 500
           })
         });
 
@@ -440,8 +500,10 @@ Please provide a personalized answer considering their profile and fitness level
 
   async getUserProfile() {
     try {
-      const profile = await AsyncStorage.getItem('userProfile');
-      return profile ? JSON.parse(profile) : {};
+      // App saves profile under 'user_info'; fall back to legacy 'userProfile' key
+      const raw = (await AsyncStorage.getItem('user_info'))
+               || (await AsyncStorage.getItem('userProfile'));
+      return raw ? JSON.parse(raw) : {};
     } catch (error) {
       console.error('Error loading user profile:', error);
       return {};
