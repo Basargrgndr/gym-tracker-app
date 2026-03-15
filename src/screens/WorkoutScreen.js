@@ -889,6 +889,15 @@ const WorkoutScreen = ({
             <Text style={[styles.programsButtonText, { color: '#f59e0b' }]}>My Progress</Text>
             <Text style={styles.programsSubtext}>PRs, charts & history</Text>
           </TouchableOpacity>
+
+          {/* Body Measurements */}
+          <TouchableOpacity
+            style={[styles.programsButton, { backgroundColor: 'rgba(139,92,246,0.12)', borderColor: 'rgba(139,92,246,0.3)' }]}
+            onPress={() => navigate('measurements')}
+          >
+            <Text style={[styles.programsButtonText, { color: '#a78bfa' }]}>Body Measurements</Text>
+            <Text style={styles.programsSubtext}>Weight, body fat & measurements</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Quick Stats */}

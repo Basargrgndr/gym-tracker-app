@@ -13,6 +13,7 @@ import GeneratedWorkoutScreen from './src/screens/GeneratedWorkoutScreen';
 import ProgramsScreen from './src/screens/ProgramsScreen';
 import AIChatScreen from './src/screens/AIChatScreen';
 import ProgressScreen from './src/screens/ProgressScreen';
+import MeasurementsScreen from './src/screens/MeasurementsScreen';
 import { styles } from './src/utils/styles';
 import ExerciseAPI from './src/services/ExerciseAPI';
 import FirestoreService from './src/services/FirestoreService';
@@ -171,6 +172,8 @@ const App = () => {
         return <AIChatScreen {...screenProps} />;
       case 'progress':
         return <ProgressScreen {...screenProps} />;
+      case 'measurements':
+        return <MeasurementsScreen {...screenProps} />;
       default:
         return isAuthenticated ? <WorkoutScreen {...screenProps} /> : <LoginScreen {...screenProps} />;
     }

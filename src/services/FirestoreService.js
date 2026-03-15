@@ -127,6 +127,51 @@ const FirestoreService = {
     }
   },
 
+  // ─── Body Measurements ───────────────────────────────────────
+
+  saveMeasurement: async (uid, entry) => {
+    try {
+      await firestore()
+        .collection('users')
+        .doc(uid)
+        .collection('measurements')
+        .doc(entry.id)
+        .set(entry, { merge: true });
+    } catch (error) {
+      console.error('FirestoreService.saveMeasurement failed:', error);
+      // Non-fatal — local AsyncStorage already saved it
+    }
+  },
+
+  getMeasurements: async (uid) => {
+    try {
+      const snapshot = await firestore()
+        .collection('users')
+        .doc(uid)
+        .collection('measurements')
+        .orderBy('date', 'desc')
+        .get();
+      return snapshot.docs.map(doc => doc.data());
+    } catch (error) {
+      console.error('FirestoreService.getMeasurements failed:', error);
+      return null;
+    }
+  },
+
+  deleteMeasurement: async (uid, measurementId) => {
+    try {
+      await firestore()
+        .collection('users')
+        .doc(uid)
+        .collection('measurements')
+        .doc(measurementId)
+        .delete();
+    } catch (error) {
+      console.error('FirestoreService.deleteMeasurement failed:', error);
+      // Non-fatal — local copy already deleted
+    }
+  },
+
   // ─── Migration ───────────────────────────────────────────────
 
   migrateFromLocalStorage: async (uid) => {
