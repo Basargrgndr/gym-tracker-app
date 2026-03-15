@@ -299,7 +299,8 @@ const WorkoutScreen = ({
 
   // ─── Wizard state ───────────────────────────────────────────────────────────
   const [showWizard, setShowWizard] = useState(false);
-  const [wizardStep, setWizardStep] = useState(1); // 1 | 2 | 3 | 'result'
+  const [wizardStep, setWizardStep] = useState(1); // 1 | 2 | 3 | 4 | 'loading' | 'result'
+  const [wizardGender, setWizardGender] = useState(null); // 'male' | 'female'
   const [wizardGoal, setWizardGoal] = useState(null);
   const [wizardDays, setWizardDays] = useState(null);
   const [wizardSplit, setWizardSplit] = useState(null);
@@ -507,6 +508,7 @@ const WorkoutScreen = ({
 
   function openWizard() {
     setWizardStep(1);
+    setWizardGender(null);
     setWizardGoal(null);
     setWizardDays(null);
     setWizardSplit(null);
@@ -521,14 +523,16 @@ const WorkoutScreen = ({
 
   async function handleWizardNext() {
     if (wizardStep === 1) {
-      if (!wizardGoal) return;
+      if (!wizardGender) return;
       setWizardStep(2);
     } else if (wizardStep === 2) {
-      if (!wizardDays) return;
-      // auto-pick first available split
-      setWizardSplit(null);
+      if (!wizardGoal) return;
       setWizardStep(3);
     } else if (wizardStep === 3) {
+      if (!wizardDays) return;
+      setWizardSplit(null);
+      setWizardStep(4);
+    } else if (wizardStep === 4) {
       if (!wizardSplit) return;
       await runWizardGeneration();
     }
@@ -543,6 +547,7 @@ const WorkoutScreen = ({
         goal: wizardGoal,
         daysPerWeek: wizardDays,
         splitType: wizardSplit,
+        gender: wizardGender,
         userProfile: userProf,
       });
 
@@ -668,23 +673,62 @@ const WorkoutScreen = ({
   // ─── Wizard render ──────────────────────────────────────────────────────────
 
   const renderWizard = () => {
-    const stepCount = 3;
+    const stepCount = 4;
     const currentStepNum = typeof wizardStep === 'number' ? wizardStep : stepCount;
 
     const ProgressBar = () => (
       <View style={wiz.progressBar}>
-        {[1, 2, 3].map(n => (
+        {[1, 2, 3, 4].map(n => (
           <View key={n} style={[wiz.progressDot, n <= currentStepNum && wiz.progressDotActive]} />
         ))}
       </View>
     );
 
-    // Step 1 — Goal
+    // Step 1 — Gender
     if (wizardStep === 1) {
+      const GENDERS = [
+        { key: 'male',   label: 'Male',   emoji: '♂',  desc: 'Balanced upper & lower body programming' },
+        { key: 'female', label: 'Female', emoji: '♀',  desc: 'More lower body & glute focus, moderate upper body' },
+      ];
       return (
         <View>
           <ProgressBar />
-          <Text style={wiz.stepLabel}>Step 1 of 3</Text>
+          <Text style={wiz.stepLabel}>Step 1 of 4</Text>
+          <Text style={wiz.title}>What's your gender?</Text>
+          <Text style={wiz.subtitle}>Used to tailor exercise selection and volume.</Text>
+          {GENDERS.map(g => (
+            <TouchableOpacity
+              key={g.key}
+              style={[wiz.optionCard, wizardGender === g.key && wiz.optionCardActive]}
+              onPress={() => setWizardGender(g.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={wiz.optionLabel}>{g.emoji}  {g.label}</Text>
+              <Text style={wiz.optionDesc}>{g.desc}</Text>
+            </TouchableOpacity>
+          ))}
+          <View style={wiz.footer}>
+            <TouchableOpacity style={wiz.backBtn} onPress={closeWizard}>
+              <Text style={wiz.backBtnText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[wiz.nextBtn, !wizardGender && wiz.nextBtnDisabled]}
+              onPress={handleWizardNext}
+              disabled={!wizardGender}
+            >
+              <Text style={wiz.nextBtnText}>Next</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
+    // Step 2 — Goal
+    if (wizardStep === 2) {
+      return (
+        <View>
+          <ProgressBar />
+          <Text style={wiz.stepLabel}>Step 2 of 4</Text>
           <Text style={wiz.title}>What's your goal?</Text>
           <Text style={wiz.subtitle}>Your program will be tailored around this.</Text>
           {GOALS.map(g => (
@@ -699,8 +743,8 @@ const WorkoutScreen = ({
             </TouchableOpacity>
           ))}
           <View style={wiz.footer}>
-            <TouchableOpacity style={wiz.backBtn} onPress={closeWizard}>
-              <Text style={wiz.backBtnText}>Cancel</Text>
+            <TouchableOpacity style={wiz.backBtn} onPress={() => setWizardStep(1)}>
+              <Text style={wiz.backBtnText}>Back</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[wiz.nextBtn, !wizardGoal && wiz.nextBtnDisabled]}
@@ -714,12 +758,12 @@ const WorkoutScreen = ({
       );
     }
 
-    // Step 2 — Days per week
-    if (wizardStep === 2) {
+    // Step 3 — Days per week
+    if (wizardStep === 3) {
       return (
         <View>
           <ProgressBar />
-          <Text style={wiz.stepLabel}>Step 2 of 3</Text>
+          <Text style={wiz.stepLabel}>Step 3 of 4</Text>
           <Text style={wiz.title}>How many days?</Text>
           <Text style={wiz.subtitle}>Training days per week.</Text>
           <View style={wiz.daysRow}>
@@ -740,7 +784,7 @@ const WorkoutScreen = ({
             </Text>
           )}
           <View style={wiz.footer}>
-            <TouchableOpacity style={wiz.backBtn} onPress={() => setWizardStep(1)}>
+            <TouchableOpacity style={wiz.backBtn} onPress={() => setWizardStep(2)}>
               <Text style={wiz.backBtnText}>Back</Text>
             </TouchableOpacity>
             <TouchableOpacity
@@ -755,13 +799,13 @@ const WorkoutScreen = ({
       );
     }
 
-    // Step 3 — Split type
-    if (wizardStep === 3) {
+    // Step 4 — Split type
+    if (wizardStep === 4) {
       const availableSplits = SPLITS[wizardDays] || SPLITS[3];
       return (
         <View>
           <ProgressBar />
-          <Text style={wiz.stepLabel}>Step 3 of 3</Text>
+          <Text style={wiz.stepLabel}>Step 4 of 4</Text>
           <Text style={wiz.title}>Choose your split</Text>
           <Text style={wiz.subtitle}>How to distribute muscle groups across days.</Text>
           {availableSplits.map(s => (
@@ -776,7 +820,7 @@ const WorkoutScreen = ({
             </TouchableOpacity>
           ))}
           <View style={wiz.footer}>
-            <TouchableOpacity style={wiz.backBtn} onPress={() => setWizardStep(2)}>
+            <TouchableOpacity style={wiz.backBtn} onPress={() => setWizardStep(3)}>
               <Text style={wiz.backBtnText}>Back</Text>
             </TouchableOpacity>
             <TouchableOpacity

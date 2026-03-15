@@ -24,13 +24,14 @@ class LLMService {
    * @param {string} params.splitType   - 'full_body' | 'upper_lower' | 'push_pull_legs' | 'bro_split'
    * @param {Object} params.userProfile - from AsyncStorage
    */
-  async generateWeeklyProgram({ goal, daysPerWeek, splitType, userProfile }) {
+  async generateWeeklyProgram({ goal, daysPerWeek, splitType, gender, userProfile }) {
     try {
       const exerciseDatabase = await this.getExerciseDatabase();
       const prompt = this.createWeeklyProgramPrompt({
         goal,
         daysPerWeek,
         splitType,
+        gender,
         userProfile,
         exerciseDatabase,
       });
@@ -51,7 +52,7 @@ class LLMService {
     }
   }
 
-  createWeeklyProgramPrompt({ goal, daysPerWeek, splitType, userProfile, exerciseDatabase }) {
+  createWeeklyProgramPrompt({ goal, daysPerWeek, splitType, gender, userProfile, exerciseDatabase }) {
     const GOAL_LABELS = {
       bodybuilding:   'Bodybuilding (muscle hypertrophy, 8-12 reps, moderate-heavy weight)',
       calisthenics:   'Calisthenics (bodyweight mastery, progressions, skill work)',
@@ -99,9 +100,28 @@ class LLMService {
       )
       .join('\n');
 
+    // Gender-specific programming guidance
+    const GENDER_GUIDANCE = {
+      female: `FEMALE-SPECIFIC PROGRAMMING:
+- Prioritize lower body volume: glutes, hamstrings, quads get 60% of total exercises.
+- For every upper body exercise include at least 2 lower body or glute exercises.
+- Include hip thrusts, glute bridges, Romanian deadlifts, lunges, step-ups, cable kickbacks, and abductor work whenever possible.
+- Upper body: use moderate weights, higher reps (12-15), focus on toning not bulk.
+- Core work (planks, dead bugs) should appear in most sessions.
+- Avoid very heavy compound upper body pressing (no 3-5 rep bench press sets).`,
+      male: `MALE-SPECIFIC PROGRAMMING:
+- Balanced upper and lower body volume.
+- Include compound lifts (squat, deadlift, bench press, overhead press, row) as primary movements.
+- Upper body can be 50% of total exercise volume.
+- Strength and hypertrophy rep ranges apply as normal per goal.`,
+    };
+
+    const genderGuidance = GENDER_GUIDANCE[gender] || GENDER_GUIDANCE.male;
+
     return `Create a ${daysPerWeek}-day weekly workout program.
 
 USER PROFILE:
+- Gender: ${gender === 'female' ? 'Female' : 'Male'}
 - Fitness level: ${userProfile?.fitnessLevel || 'intermediate'}
 - Primary goal: ${GOAL_LABELS[goal] || goal}
 - Split type: ${SPLIT_LABELS[splitType] || splitType}
@@ -109,12 +129,14 @@ USER PROFILE:
 - Available equipment: ${userEquipment.length > 0 ? userEquipment.join(', ') : 'full gym (barbells, dumbbells, cables, machines)'}
 - Session duration: ${sessionMins} minutes
 
+${genderGuidance}
+
 AVAILABLE EXERCISES (use ONLY exercises from this list when possible):
 ${sampleExercises}
 
 RULES:
 1. Produce EXACTLY ${daysPerWeek} training days (Day 1 to Day ${daysPerWeek}). No rest days in the output.
-2. Each day needs a "dayName" matching the split (e.g. "Push Day", "Upper Body A", "Legs").
+2. Each day needs a "dayName" matching the split (e.g. "Push Day", "Upper Body A", "Glutes & Legs").
 3. Each day: 4–6 exercises. No more, no less.
 4. Volume by goal: strength → 4-5 sets × 3-6 reps; hypertrophy → 3-4 sets × 8-12 reps; weight_loss → 3 sets × 12-20 reps; general → 3 sets × 10-15 reps.
 5. Only use exercises compatible with the user's equipment. Prioritize exercises from the list above.
