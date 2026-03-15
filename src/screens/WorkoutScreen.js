@@ -931,30 +931,21 @@ const WorkoutScreen = ({
           </TouchableOpacity>
 
           {/* AI Chat */}
-          <TouchableOpacity
-            style={[styles.programsButton, { backgroundColor: 'rgba(139,92,246,0.12)', borderColor: 'rgba(139,92,246,0.3)' }]}
-            onPress={handleAIAssistant}
-          >
-            <Text style={[styles.programsButtonText, { color: '#a78bfa' }]}>AI Fitness Assistant</Text>
-            <Text style={styles.programsSubtext}>Ask questions, get advice</Text>
+          <TouchableOpacity style={styles.generateButton} onPress={handleAIAssistant}>
+            <Text style={styles.generateButtonText}>AI Fitness Assistant</Text>
+            <Text style={styles.generateSubtext}>Ask questions, get advice</Text>
           </TouchableOpacity>
 
           {/* My Programs */}
-          <TouchableOpacity
-            style={[styles.programsButton, { backgroundColor: 'rgba(139,92,246,0.12)', borderColor: 'rgba(139,92,246,0.3)' }]}
-            onPress={() => navigate('programs')}
-          >
-            <Text style={[styles.programsButtonText, { color: '#a78bfa' }]}>My Programs</Text>
-            <Text style={styles.programsSubtext}>Custom workout plans</Text>
+          <TouchableOpacity style={styles.generateButton} onPress={() => navigate('programs')}>
+            <Text style={styles.generateButtonText}>My Programs</Text>
+            <Text style={styles.generateSubtext}>Custom workout plans</Text>
           </TouchableOpacity>
 
           {/* Progress */}
-          <TouchableOpacity
-            style={[styles.programsButton, { backgroundColor: 'rgba(139,92,246,0.12)', borderColor: 'rgba(139,92,246,0.3)' }]}
-            onPress={() => navigate('progress')}
-          >
-            <Text style={[styles.programsButtonText, { color: '#a78bfa' }]}>My Progress</Text>
-            <Text style={styles.programsSubtext}>PRs, charts & history</Text>
+          <TouchableOpacity style={styles.generateButton} onPress={() => navigate('progress')}>
+            <Text style={styles.generateButtonText}>My Progress</Text>
+            <Text style={styles.generateSubtext}>PRs, charts & history</Text>
           </TouchableOpacity>
 
           {/* Body Measurements */}
